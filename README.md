@@ -1,9 +1,9 @@
-# SimpleNotes-GTK 🍃
+# SimpleNotes-GTK
 
 A minimalist & lightweight note-taking app, built to be simple yet reliable.
 
-GTK based app meant to work along the android app [Fossify Notes](https://github.com/FossifyOrg/Notes) using a syncing service like [syncthing](https://github.com/syncthing/syncthing)  
-or as a simple day to day notetaking app.
+GTK based app meant to work along with the mobile app [Fossify Notes](https://github.com/FossifyOrg/Notes) using a syncing service like [syncthing](https://github.com/syncthing/syncthing)  
+or as a simple day to day notetaking app for day to day use.
 
 ## Caracteristics
 - 📝 Plain text notes with basic Markdown higliting for unordered lists and titles.  
