@@ -52,6 +52,6 @@ Run the script:
 ```Bash
 python3 SimpleNotes.py
 ```
-
+  
 **Disclaimer:**  
-this app was made with the use of AI
+AI was used to make this app
