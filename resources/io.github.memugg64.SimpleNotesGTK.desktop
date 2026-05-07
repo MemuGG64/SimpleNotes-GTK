@@ -1,0 +1,10 @@
+[Desktop Entry]
+Name=SimpleNotes-GTK
+Comment=Minimalist note-taking app
+Exec=simplenotes-gtk
+Icon=io.github.memugg64.SimpleNotesGTK
+Terminal=false
+Type=Application
+Categories=Utility;TextEditor;
+Keywords=notes;simple;gtk;
+StartupWMClass=simplenotes-gtk
