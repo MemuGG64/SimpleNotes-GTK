@@ -9,6 +9,8 @@ script_dir = os.path.dirname(os.path.realpath(__file__))
 sys.path.insert(0, os.path.join(script_dir, 'src'))
 
 if __name__ == "__main__":
+    import gi
+    gi.require_version('Gtk', '3.0')
     from gi.repository import Gtk
     import main
     

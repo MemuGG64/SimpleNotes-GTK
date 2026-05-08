@@ -15,12 +15,13 @@ class ConfigManager:
         "width": 950,
         "height": 650,
         "binds": {
-            "save": "<Control>s",
-            "undo": "<Control>z",
-            "redo": "<Control>y",
-            "n_txt": "<Control>n",
-            "n_todo": "<Control>t",
-            "find": "<Control>f"
+            "save": "<Primary>s",
+            "undo": "<Primary>z",
+            "redo": "<Primary>y",
+            "n_txt": "<Primary>n",
+            "n_todo": "<Primary>t",
+            "find": "<Primary>f",
+            "switch_note": "<Primary>bar"
         }
     }
 
@@ -37,7 +38,10 @@ class ConfigManager:
         try:
             if os.path.exists(self.settings_file):
                 with open(self.settings_file, 'r') as f:
-                    self.conf.update(json.load(f))
+                    data = json.load(f)
+                    if "binds" in data:
+                        self.conf["binds"].update(data.pop("binds"))
+                    self.conf.update(data)
         except (json.JSONDecodeError, IOError) as e:
             print(f"Error loading config: {e}")
 
