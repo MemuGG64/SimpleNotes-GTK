@@ -33,7 +33,7 @@ class FileOperations:
             if root != notes_dir:
                 all_folders.add(folder_name)
             
-            for f in [x for x in filenames if x.endswith('.txt')]:
+            for f in [x for x in filenames if x.endswith(('.txt', '.json', '.md'))]:
                 path = os.path.join(root, f)
                 if not query or query in f.lower():
                     files.append({
@@ -45,13 +45,16 @@ class FileOperations:
         
         return files, all_folders
 
-    def create_note(self, name, folder="Root", is_todo=False):
+    def create_note(self, name, folder="Root", is_todo=False, extension=".txt"):
         target_dir = self.get_notes_dir()
         if folder and folder != "Root":
             target_dir = os.path.join(target_dir, folder)
         
         Path(target_dir).mkdir(parents=True, exist_ok=True)
-        path = os.path.join(target_dir, f"{name}.txt")
+        # Ensure name doesn't already have the extension if user typed it
+        if not any(name.endswith(ext) for ext in ['.txt', '.json', '.md']):
+            name += extension
+        path = os.path.join(target_dir, name)
         
         if os.path.exists(path):
             return None, "exists"
@@ -65,9 +68,22 @@ class FileOperations:
             return None, str(e)
 
     def rename_note(self, old_path, new_name):
-        new_path = os.path.join(os.path.dirname(old_path), f"{new_name}.txt")
+        # If new_name doesn't have extension, keep the old one
+        if not any(new_name.endswith(ext) for ext in ['.txt', '.json', '.md']):
+            new_name += os.path.splitext(old_path)[1]
+        new_path = os.path.join(os.path.dirname(old_path), new_name)
         try:
             os.rename(old_path, new_path)
+            return new_path, None
+        except Exception as e:
+            return None, str(e)
+
+    def change_extension(self, path, new_ext):
+        new_path = os.path.splitext(path)[0] + new_ext
+        if os.path.exists(new_path):
+            return None, "exists"
+        try:
+            os.rename(path, new_path)
             return new_path, None
         except Exception as e:
             return None, str(e)
