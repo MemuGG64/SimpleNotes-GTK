@@ -33,22 +33,17 @@ class NoteStylist:
                 self.buffer.remove_tag(tag, start, end)
 
             # Remove all pixbufs added by NoteStylist
-            # We iterate backwards to maintain valid offsets while deleting
             it = self.buffer.get_start_iter()
             while True:
-                # Find the next range with our pixbuf tag
                 res = it.forward_to_tag_toggle(self.tag_pixbuf)
                 if not res: break
                 
-                # If it's a start of the tag, get the end and delete
                 if it.begins_tag(self.tag_pixbuf):
                     end_it = it.copy()
                     end_it.forward_to_tag_toggle(self.tag_pixbuf)
+                    offset = it.get_offset()
                     self.buffer.delete(it, end_it)
-                    # it is now at the position of the deleted char
-                else:
-                    # Just keep moving
-                    pass
+                    it = self.buffer.get_iter_at_offset(offset)
                 if it.is_end(): break
 
             # 1. Bold Headers
