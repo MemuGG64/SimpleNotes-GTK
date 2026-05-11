@@ -14,6 +14,7 @@ from config import ConfigManager
 from file_operations import FileOperations
 from state_manager import StateManager
 from ui_helpers import UIHelpers
+from note_styler import NoteStylist
 
 # Process identity
 GLib.set_prgname('simplenotes-gtk')
@@ -116,20 +117,33 @@ class SimpleNotes_GTK(Gtk.Window):
         self.stack.add_named(Gtk.Label(label="Select or create a note"), "empty")
         
         self.text_view = Gtk.TextView(wrap_mode=Gtk.WrapMode.WORD, left_margin=15, right_margin=15, top_margin=15)
+        self.text_view.connect("key-press-event", self.on_key_press)
+        self.text_view.connect("paste-clipboard", self.on_paste)
+        self.text_view.connect("populate-popup", self.on_populate_popup)
         self.connect("key-press-event", self.on_key_press)
-        self.tag_bold = self.text_view.get_buffer().create_tag("bold", weight=Pango.Weight.BOLD)
+        
+        self.note_styler = NoteStylist(self.text_view, self.file_ops)
         self.text_view.get_buffer().connect("changed", self.queue_state)
+        self.text_view.get_buffer().connect("mark-set", self.on_cursor_moved)
         sw_txt = Gtk.ScrolledWindow(); sw_txt.add(self.text_view)
         self.stack.add_named(sw_txt, "text")
 
         td_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10, border_width=10)
         self.todo_listbox = Gtk.ListBox(selection_mode=Gtk.SelectionMode.NONE)
         td_box.pack_start(self.todo_listbox, False, False, 0)
-        add_task_btn = Gtk.Button(label="+ Add Task")
-        add_task_btn.connect("clicked", lambda x: self.add_todo().grab_focus())
-        td_box.pack_start(add_task_btn, False, False, 0)
-        sw_td = Gtk.ScrolledWindow(); sw_td.add(td_box)
-        self.stack.add_named(sw_td, "todo")
+        
+        self.add_task_btn = Gtk.Button(label="+ Add Task")
+        self.add_task_btn.connect("clicked", lambda x: self.add_todo().grab_focus())
+        td_box.pack_start(self.add_task_btn, False, False, 0)
+
+        self.checked_expander = Gtk.Expander(label="0 checked items")
+        self.checked_expander.set_margin_top(15)
+        self.checked_listbox = Gtk.ListBox(selection_mode=Gtk.SelectionMode.NONE)
+        self.checked_expander.add(self.checked_listbox)
+        td_box.pack_start(self.checked_expander, False, False, 0)
+
+        self.todo_sw = Gtk.ScrolledWindow(); self.todo_sw.add(td_box)
+        self.stack.add_named(self.todo_sw, "todo")
 
         self.setup_settings_ui()
         
@@ -148,15 +162,11 @@ class SimpleNotes_GTK(Gtk.Window):
             sb_w = self.sb_box.get_allocated_width()
             self.last_sb_w = sb_w
             self.sb_box.hide()
-            # To stay in place, when hiding from left, the window shrinks 
-            # and the X position must move RIGHT by the width of the sidebar
             self.move(pos_x + sb_w, pos_y)
             self.resize(max(300, w - sb_w), h)
         else:
             self.sb_box.show()
             sb_w = getattr(self, 'last_sb_w', 250)
-            # To expand to the left, the window grows 
-            # and the X position moves LEFT by the width of the sidebar
             self.move(pos_x - sb_w, pos_y)
             self.resize(w + sb_w, h)
 
@@ -215,7 +225,6 @@ class SimpleNotes_GTK(Gtk.Window):
             defaults = self.config_manager.DEFAULT_CONFIG["binds"].copy()
             self.config_manager.set("binds", defaults)
             self.reload_shortcuts()
-            # Refresh the TreeView store
             self.sc_store.clear()
             for a_id, d_n in [("save", "Save"), ("undo", "Undo"), ("redo", "Redo"), ("n_txt", "New Text"), ("n_todo", "New To-Do"), ("find", "Find"), ("switch_note", "Quick Swap")]:
                 a_s = self.config_manager.get("binds").get(a_id, ""); k, m = Gtk.accelerator_parse(a_s) if a_s else (0,0)
@@ -238,7 +247,7 @@ class SimpleNotes_GTK(Gtk.Window):
 
     def on_window_delete(self, *args):
         w, h = self.get_size(); self.config_manager.update({"width": w, "height": h})
-        if self.config_manager.get("autosave") != "off": self.on_save()
+        self.on_save()
         return False
 
     def exec_bind(self, a_id):
@@ -249,32 +258,95 @@ class SimpleNotes_GTK(Gtk.Window):
         return False
 
     def on_save(self, *args):
-        if not self.current_path or not os.path.exists(self.current_path) or self.undoing: return
+        if not self.current_path or not os.path.exists(self.current_path): return
         if self.file_ops.is_todo(self.current_path):
-            td = [{"dateCreated": getattr(r, 'ts', int(time.time()*1000)), "id": i+1, "isDone": r.chk.get_active(), "title": r.ent.get_text()} for i, r in enumerate(self.todo_listbox.get_children())]
+            all_rows = self.todo_listbox.get_children() + self.checked_listbox.get_children()
+            td = [{"dateCreated": getattr(r, 'ts', int(time.time()*1000)), "id": getattr(r, 'todo_id', i+1), "isDone": r.chk.get_active(), "title": r.ent.get_text()} for i, r in enumerate(all_rows)]
             self.file_ops.save_todo_note(self.current_path, td)
         else:
             buf = self.text_view.get_buffer()
             self.file_ops.save_text_note(self.current_path, buf.get_text(*buf.get_bounds(), True))
-        if args: self.refresh_sidebar()
+        if args and args[0] is not self: self.refresh_sidebar()
 
-    def add_todo(self, txt="", done=False, d_c=None, index=-1):
+    def update_checked_label(self):
+        count = len(self.checked_listbox.get_children())
+        self.checked_expander.set_label(f"{count} checked items")
+        self.checked_expander.set_visible(count > 0)
+
+    def move_todo_row(self, row, is_done):
+        if is_done:
+            row.get_style_context().add_class('done')
+            if row.get_parent() == self.todo_listbox:
+                self.todo_listbox.remove(row)
+                self.checked_listbox.add(row)
+        else:
+            row.get_style_context().remove_class('done')
+            if row.get_parent() == self.checked_listbox:
+                self.checked_listbox.remove(row)
+                self.todo_listbox.add(row)
+        self.update_checked_label()
+
+    def add_todo(self, txt="", done=False, d_c=None, index=-1, todo_id=None):
         row = Gtk.ListBoxRow(); box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10); box.get_style_context().add_class('t-box')
         hb = Gtk.EventBox(); hb.add(Gtk.Label(label="⣿", margin_start=5, margin_end=5))
+        
         chk = Gtk.CheckButton(active=done, focus_on_click=False)
-        chk.connect("toggled", lambda c: [row.get_style_context().add_class('done') if c.get_active() else row.get_style_context().remove_class('done'), self.queue_state(), self.on_save()])
-        ent = Gtk.Entry(text=txt, hexpand=True); ent.connect("changed", self.queue_state)
-        ent.connect("activate", lambda e: GLib.idle_add(lambda: self.add_todo(index=row.get_index()+1).grab_focus()))
-        del_b = UIHelpers.create_btn("edit-delete-symbolic", cb=lambda x: [self.todo_listbox.remove(row), self.queue_state(), self.on_save()])
+        def on_toggled(c):
+            self.move_todo_row(row, c.get_active())
+            self.queue_state()
+            self.on_save()
+        chk.connect("toggled", on_toggled)
+
+        ent = Gtk.Entry(text=txt, hexpand=True); ent.connect("changed", lambda e: self.queue_state())
+        
+        def on_key(e, ev):
+            if ev.keyval == Gdk.KEY_Return:
+                is_done_list = (row.get_parent() == self.checked_listbox)
+                idx = row.get_index()
+                GLib.idle_add(lambda: self.add_todo(index=idx+1, done=is_done_list).grab_focus())
+                return True
+            if ev.keyval == Gdk.KEY_BackSpace and not e.get_text():
+                idx, parent = row.get_index(), row.get_parent()
+                if idx > 0:
+                    pr = parent.get_row_at_index(idx - 1)
+                    if pr: pr.ent.grab_focus()
+                parent.remove(row); self.update_checked_label(); self.queue_state(); self.on_save()
+                return True
+            return False
+            
+        ent.connect("key-press-event", on_key)
+        del_b = UIHelpers.create_btn("edit-delete-symbolic", cb=lambda x: [row.get_parent().remove(row), self.update_checked_label(), self.queue_state(), self.on_save()])
         del_b.set_relief(Gtk.ReliefStyle.NONE); [box.pack_start(w, w == ent, w == ent, 0) for w in (hb, chk, ent, del_b)]
-        eb = Gtk.EventBox(); eb.add(box); row.add(eb); row.ts, row.chk, row.ent, row.box = d_c, chk, ent, box
-        if done: row.get_style_context().add_class('done')
-        tgt = Gtk.TargetEntry.new("ROW", Gtk.TargetFlags.SAME_APP, 0); hb.drag_source_set(Gdk.ModifierType.BUTTON1_MASK, [tgt], Gdk.DragAction.MOVE)
-        hb.connect("drag-begin", lambda w, c: setattr(self, 'drag_row', row)); eb.drag_dest_set(Gtk.DestDefaults.DROP, [tgt], Gdk.DragAction.MOVE)
-        eb.connect("drag-motion", self.d_motion, row); eb.connect("drag-leave", self.d_clean); eb.connect("drag-data-received", self.d_drop, row)
-        if index == -1: self.todo_listbox.add(row)
-        else: self.todo_listbox.insert(row, index)
-        self.todo_listbox.show_all(); return ent
+        row.add(box); row.ts, row.chk, row.ent, row.box, row.todo_id = d_c, chk, ent, box, todo_id
+        
+        if done:
+            row.get_style_context().add_class('done')
+            if index == -1: self.checked_listbox.add(row)
+            else: self.checked_listbox.insert(row, index)
+        else:
+            if index == -1: self.todo_listbox.add(row)
+            else: self.todo_listbox.insert(row, index)
+        
+        # DND Reordering
+        tgt = Gtk.TargetEntry.new("ROW", Gtk.TargetFlags.SAME_APP, 0)
+        hb.drag_source_set(Gdk.ModifierType.BUTTON1_MASK, [tgt], Gdk.DragAction.MOVE)
+        hb.connect("drag-begin", lambda w, c: setattr(self, 'drag_row', row))
+        hb.connect("drag-data-get", lambda w, c, d, i, t: d.set(Gdk.Atom.intern("ROW", False), 8, b""))
+        row.drag_dest_set(Gtk.DestDefaults.ALL, [tgt], Gdk.DragAction.MOVE)
+        row.connect("drag-motion", self.d_motion, row)
+        row.connect("drag-leave", lambda *a: self.d_clean())
+        row.connect("drag-data-received", self.d_drop, row)
+
+        row.show_all()
+        self.update_checked_label()
+        if not done and (index == -1 or index >= len(self.todo_listbox.get_children()) - 1):
+            GLib.idle_add(self.scroll_to_bottom)
+        return ent
+
+    def scroll_to_bottom(self):
+        adj = self.todo_sw.get_vadjustment()
+        adj.set_value(adj.get_upper() - adj.get_page_size())
+        return False
 
     def on_pin(self, btn):
         if not self.current_path: return
@@ -297,8 +369,6 @@ class SimpleNotes_GTK(Gtk.Window):
             t_it = store.append(tree_p, [title[0], title[2:], ""]) if tree_p is None else tree_p
             for item in items:
                 p, n, is_t = item["path"], item["name"], item["is_todo"]; ico = "☑" if is_t else "📄"
-                # If it's a todo, it usually doesn't show extension or shows it as .json? 
-                # The user wants to see .txt specifically.
                 display_name = n
                 b = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10, border_width=5)
                 b.pack_start(Gtk.Label(label=ico), False, False, 0); b.pack_start(Gtk.Label(label=display_name, xalign=0, ellipsize=Pango.EllipsizeMode.END), True, True, 0)
@@ -316,7 +386,7 @@ class SimpleNotes_GTK(Gtk.Window):
         self.file_listbox.show_all(); self.file_tree.expand_all()
 
     def on_sb_click(self, widget, event):
-        if event.button == 1: # Left click
+        if event.button == 1:
             if isinstance(widget, Gtk.TreeView):
                 path_info = widget.get_path_at_pos(int(event.x), int(event.y))
                 if path_info:
@@ -334,7 +404,7 @@ class SimpleNotes_GTK(Gtk.Window):
                 if r and hasattr(r, 'filepath') and r.filepath != self.current_path: 
                     self.open_file(r.filepath)
         
-        elif event.button == 3: # Right click
+        elif event.button == 3:
             r_path = r_fol = None
             if isinstance(widget, Gtk.TreeView):
                 path_info = widget.get_path_at_pos(int(event.x), int(event.y))
@@ -385,25 +455,23 @@ class SimpleNotes_GTK(Gtk.Window):
         if self.current_path: self.on_save()
         self.undoing, self.current_path = True, path
         
-        # Update history
         if path in self.note_history: self.note_history.remove(path)
         self.note_history.insert(0, path)
         if len(self.note_history) > 10: self.note_history.pop()
 
         self.pin_btn.set_active(path in self.config_manager.get("pinned"))
+        self.note_styler.revealed_range = None
         if self.file_ops.is_todo(path):
             self.stack.set_visible_child_name("todo"); [self.todo_listbox.remove(r) for r in self.todo_listbox.get_children()]
             try:
-                for i in json.loads(self.file_ops.load_note_content(path)): self.add_todo(i.get("title", ""), i.get("isDone", False), i.get("dateCreated"))
+                items = json.loads(self.file_ops.load_note_content(path))
+                items.sort(key=lambda x: x.get('id', 0))
+                for i in items: self.add_todo(i.get("title", ""), i.get("isDone", False), i.get("dateCreated"), todo_id=i.get("id"))
             except: pass
             self.todo_listbox.show_all()
         else:
             self.stack.set_visible_child_name("text"); self.text_view.get_buffer().set_text(self.file_ops.load_note_content(path))
         self.undoing = False; self.state_manager.push_state(path, self.get_state()); self.apply_markdown()
-
-    def switch_to_last_note(self):
-        if len(self.note_history) >= 2:
-            self.open_file(self.note_history[1])
 
     def rename_folder_dialog(self, old):
         n = UIHelpers.get_text_input(self, f"Rename folder '{old}' to:", old)
@@ -434,10 +502,8 @@ class SimpleNotes_GTK(Gtk.Window):
     def create_file_dialog(self, is_todo):
         dlg = UIHelpers.show_dialog(self, Gtk.MessageType.QUESTION, Gtk.ButtonsType.OK_CANCEL, "Create New Note")
         area = dlg.get_message_area()
-        
         ent = Gtk.Entry(placeholder_text="Note Name"); ent.set_activates_default(True)
         area.pack_start(ent, True, True, 5)
-        
         box_opts = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=5)
         cb_fol = Gtk.ComboBoxText.new_with_entry(); cb_fol.append_text("Root")
         if self.config_manager.get("folders"):
@@ -446,11 +512,9 @@ class SimpleNotes_GTK(Gtk.Window):
                     if f.is_dir() and not f.name.startswith('.'): cb_fol.append_text(f.name)
             except: pass
         cb_fol.set_active(0); box_opts.pack_start(cb_fol, True, True, 0)
-        
         cb_ext = Gtk.ComboBoxText(); [cb_ext.append_text(e) for e in [".txt", ".md", ".json"]]
         cb_ext.set_active(0); box_opts.pack_start(cb_ext, False, False, 0)
         area.pack_start(box_opts, True, True, 5)
-        
         dlg.show_all()
         if dlg.run() == Gtk.ResponseType.OK and ent.get_text().strip():
             name = ent.get_text().strip()
@@ -473,7 +537,6 @@ class SimpleNotes_GTK(Gtk.Window):
     def move_note_dialog(self, p):
         dlg = UIHelpers.show_dialog(self, Gtk.MessageType.QUESTION, Gtk.ButtonsType.OK_CANCEL, "Move Note to Folder")
         area = dlg.get_message_area()
-        
         cb = Gtk.ComboBoxText.new_with_entry(); cb.append_text("Root")
         if self.config_manager.get("folders"):
             try:
@@ -481,7 +544,6 @@ class SimpleNotes_GTK(Gtk.Window):
                     if f.is_dir() and not f.name.startswith('.'): cb.append_text(f.name)
             except: pass
         cb.set_active(0); area.pack_start(cb, True, True, 5)
-        
         dlg.show_all()
         if dlg.run() == Gtk.ResponseType.OK:
             folder = cb.get_child().get_text().strip()
@@ -504,23 +566,41 @@ class SimpleNotes_GTK(Gtk.Window):
                 if self.current_path == target: self.current_path = None; self.stack.set_visible_child_name("empty")
                 self.state_manager.clear_history(target); self.refresh_sidebar()
 
+    def on_paste(self, widget):
+        if self.note_styler.handle_paste():
+            widget.stop_emission_by_name("paste-clipboard")
+
+    def on_populate_popup(self, text_view, menu):
+        it = text_view.get_buffer().get_iter_at_mark(text_view.get_buffer().get_insert())
+        span = self.note_styler.get_markdown_at_iter(it)
+        if span:
+            sep = Gtk.SeparatorMenuItem(); sep.show(); menu.append(sep)
+            mi = Gtk.MenuItem(label="Edit Markdown Source"); mi.show()
+            mi.connect("activate", lambda _: self.reveal_markdown(span))
+            menu.append(mi)
+
+    def reveal_markdown(self, span):
+        self.note_styler.revealed_range = span
+        self.apply_markdown()
+
+    def on_cursor_moved(self, buffer, iter, mark):
+        if mark.get_name() == "insert" and self.note_styler.revealed_range:
+            offset = iter.get_offset()
+            rs, re = self.note_styler.revealed_range
+            if offset < rs or offset > re:
+                self.note_styler.revealed_range = None
+                self.apply_markdown()
+
     def apply_markdown(self):
-        buf = self.text_view.get_buffer(); start, end = buf.get_bounds(); buf.remove_tag(self.tag_bold, start, end)
-        cursor = buf.get_iter_at_offset(0)
-        while not cursor.is_end():
-            line_start = cursor.copy(); (cursor.forward_to_line_end() if not cursor.ends_line() else None)
-            if buf.get_text(line_start, cursor, False).lstrip().startswith('#'): buf.apply_tag(self.tag_bold, line_start, cursor)
-            (cursor.forward_line() if not cursor.is_end() else None)
+        self.note_styler.apply_markdown()
 
     def on_key_press(self, widget, event):
-        # Global shortcut for switching notes (Ctrl+Tab is often eaten by Gtk focus navigation)
         s_note_bind = self.config_manager.get("binds").get("switch_note", "")
         if s_note_bind:
             k, m = Gtk.accelerator_parse(s_note_bind)
             mod_mask = Gtk.accelerator_get_default_mod_mask()
             if event.keyval == k and (event.state & mod_mask) == (m & mod_mask):
                 if self.exec_bind("switch_note"): return True
-            # Fallback for ISO_Left_Tab (common on Linux for Ctrl+Tab)
             if k == Gdk.KEY_Tab and event.keyval == Gdk.KEY_ISO_Left_Tab and (event.state & mod_mask) == (m & mod_mask):
                 if self.exec_bind("switch_note"): return True
 
@@ -541,7 +621,7 @@ class SimpleNotes_GTK(Gtk.Window):
 
     def get_state(self):
         if not self.current_path: return None
-        if self.file_ops.is_todo(self.current_path): return [{"done": r.chk.get_active(), "txt": r.ent.get_text(), "ts": r.ts} for r in self.todo_listbox.get_children()]
+        if self.file_ops.is_todo(self.current_path): return [{"done": r.chk.get_active(), "txt": r.ent.get_text(), "ts": r.ts, "id": getattr(r, 'todo_id', None)} for r in self.todo_listbox.get_children()]
         b = self.text_view.get_buffer(); return b.get_text(*b.get_bounds(), True)
 
     def queue_state(self, *args):
@@ -563,25 +643,30 @@ class SimpleNotes_GTK(Gtk.Window):
     def apply_state(self, st):
         if self.file_ops.is_todo(self.current_path):
             [self.todo_listbox.remove(r) for r in self.todo_listbox.get_children()]
-            for i in st: self.add_todo(i["txt"], i["done"], i.get("ts"))
+            [self.checked_listbox.remove(r) for r in self.checked_listbox.get_children()]
+            for i in st: self.add_todo(i["txt"], i["done"], i.get("ts"), todo_id=i.get("id"))
+            self.update_checked_label()
         else: self.text_view.get_buffer().set_text(st)
         self.on_save()
 
-    def d_clean(self, *args): [r.box.get_style_context().remove_class(c) for r in self.todo_listbox.get_children() for c in ('drag-top', 'drag-bottom')]
+    def d_clean(self, *args): self.todo_listbox.drag_unhighlight_row()
 
     def d_motion(self, w, c, x, y, t, t_row):
         if self.drag_row == t_row: return False
-        self.d_clean(); idx = t_row.get_index(); is_top = y < w.get_allocation().height / 2
-        nr = self.todo_listbox.get_row_at_index(idx + 1); (nr.box if nr and not is_top else t_row.box).get_style_context().add_class('drag-top' if is_top or nr else 'drag-bottom')
+        self.todo_listbox.drag_highlight_row(t_row)
         Gdk.drag_status(c, Gdk.DragAction.MOVE, t); return True
 
     def d_drop(self, w, c, x, y, d, i, t, t_row):
-        self.d_clean()
+        self.todo_listbox.drag_unhighlight_row()
         if self.drag_row and self.drag_row != t_row:
-            t_idx = t_row.get_index() + (1 if y >= w.get_allocation().height / 2 else 0)
-            t_idx -= 1 if self.drag_row.get_index() < t_idx else 0
-            self.todo_listbox.remove(self.drag_row); self.todo_listbox.insert(self.drag_row, t_idx); c.finish(True, False, t); self.queue_state(); self.on_save()
-        else: c.finish(False, False, t)
+            t_idx = t_row.get_index()
+            if y > t_row.get_allocated_height() / 2: t_idx += 1
+            curr_idx = self.drag_row.get_index()
+            if curr_idx < t_idx: t_idx -= 1
+            parent = self.drag_row.get_parent()
+            parent.remove(self.drag_row); parent.insert(self.drag_row, t_idx)
+            Gtk.drag_finish(c, True, False, t); self.queue_state(); self.on_save()
+        else: Gtk.drag_finish(c, False, False, t)
 
     def apply_autosave(self):
         (GLib.source_remove(self.timer_id) if self.timer_id else None)
