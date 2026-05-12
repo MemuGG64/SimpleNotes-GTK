@@ -5,6 +5,8 @@ import json
 import time
 import re
 import webbrowser
+import threading
+import urllib.request
 from pathlib import Path
 
 gi.require_version('Gtk', '3.0')
@@ -17,6 +19,9 @@ from state_manager import StateManager
 from ui_helpers import UIHelpers
 from note_styler import NoteStylist
 from to_do_styler import ToDoStyler
+
+VERSION = "1.2.1"
+GITHUB_REPO = "MemuGG64/SimpleNotes-GTK"
 
 # Process identity
 GLib.set_prgname('simplenotes-gtk')
@@ -47,6 +52,7 @@ class SimpleNotes_GTK(Gtk.Window):
         self.setup_ui()
         self.apply_autosave()
         self.refresh_sidebar()
+        GLib.timeout_add(3000, self._check_updates)
 
     def load_styles(self):
         css = Gtk.CssProvider()
@@ -601,6 +607,45 @@ class SimpleNotes_GTK(Gtk.Window):
             self.todo_styler.update_checked_count()
         else: self.text_view.get_buffer().set_text(st)
         self.on_save()
+
+    def _check_updates(self):
+        threading.Thread(target=self._fetch_latest_version, daemon=True).start()
+        return False
+
+    def _fetch_latest_version(self):
+        try:
+            req = urllib.request.Request(
+                f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest",
+                headers={"User-Agent": "SimpleNotes-GTK", "Accept": "application/vnd.github.v3+json"}
+            )
+            with urllib.request.urlopen(req, timeout=5) as r:
+                data = json.loads(r.read().decode())
+            tag = data.get("tag_name", "").lstrip("v")
+            if tag and self._version_gt(tag, VERSION):
+                url = data.get("html_url", f"https://github.com/{GITHUB_REPO}/releases/latest")
+                GLib.idle_add(self._prompt_update, tag, url)
+        except:
+            pass
+
+    def _version_gt(self, a, b):
+        try:
+            va = tuple(int(x) for x in a.split("."))
+            vb = tuple(int(x) for x in b.split("."))
+            return va > vb
+        except:
+            return False
+
+    def _prompt_update(self, latest, url):
+        dlg = Gtk.MessageDialog(
+            parent=self, flags=Gtk.DialogFlags.MODAL,
+            type=Gtk.MessageType.QUESTION,
+            buttons=Gtk.ButtonsType.YES_NO,
+            message_format=f"Update available: v{VERSION} → v{latest}",
+        )
+        dlg.format_secondary_text("Download the new version?")
+        if dlg.run() == Gtk.ResponseType.YES:
+            webbrowser.open(url)
+        dlg.destroy()
 
     def apply_autosave(self):
         (GLib.source_remove(self.timer_id) if self.timer_id else None)
