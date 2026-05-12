@@ -1,0 +1,37 @@
+{
+  "id" : "io.github.memugg64.SimpleNotesGTK",
+  "runtime" : "org.gnome.Platform",
+  "runtime-version" : "45",
+  "runtime-commit" : "4f6999b80e1e0baab5a0b22b3b325545d33585c5b94122ce43eb5ae791830a34",
+  "sdk" : "org.gnome.Sdk",
+  "sdk-commit" : "9be6d7c9cb33864ba2e353c4c199545fcc9fdea838165338e8f316a92513bc4c",
+  "command" : "simplenotes-gtk",
+  "modules" : [
+    {
+      "name" : "simplenotes-gtk",
+      "buildsystem" : "simple",
+      "sources" : [
+        {
+          "path" : "..",
+          "type" : "dir"
+        }
+      ],
+      "build-commands" : [
+        "install -Dm755 SimpleNotes.py /app/SimpleNotes.py",
+        "install -Dm644 src/*.py -t /app/src/",
+        "install -Dm644 resources/styles.css /app/resources/styles.css",
+        "install -Dm644 resources/io.github.memugg64.SimpleNotesGTK.desktop /app/share/applications/io.github.memugg64.SimpleNotesGTK.desktop",
+        "install -Dm644 resources/io.github.memugg64.SimpleNotesGTK.png /app/share/icons/hicolor/256x256/apps/io.github.memugg64.SimpleNotesGTK.png",
+        "install -Dm755 flatpak/simplenotes-gtk.sh /app/bin/simplenotes-gtk"
+      ]
+    }
+  ],
+  "finish-args" : [
+    "--socket=x11",
+    "--socket=wayland",
+    "--share=ipc",
+    "--device=dri",
+    "--filesystem=home"
+  ],
+  "source-date-epoch" : 1778542362
+}

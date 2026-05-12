@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8"><title>SimpleNotes-GTK</title></head>
+<body style="font-family:sans-serif;max-width:800px;margin:auto;padding:2em">
+<h1>SimpleNotes-GTK</h1>
+<p>Minimalist note-taking app v1.2.0</p>
+
+<h2>APT install</h2>
+<pre><code>sudo mkdir -p /usr/share/keyrings
+sudo wget -O /usr/share/keyrings/simplenotes-archive-keyring.gpg \
+  https://memugg64.github.io/SimpleNotes-GTK/simplenotes-archive-keyring.gpg
+echo "deb [signed-by=/usr/share/keyrings/simplenotes-archive-keyring.gpg] https://memugg64.github.io/SimpleNotes-GTK/apt ./" | \
+  sudo tee /etc/apt/sources.list.d/simplenotes.list
+sudo apt update
+sudo apt install simplenotes-gtk</code></pre>
+
+<h2>Flatpak install</h2>
+<pre><code>flatpak remote-add --user --if-not-exists simplenotes \
+  https://memugg64.github.io/SimpleNotes-GTK/flatpak
+flatpak install --user simplenotes io.github.memugg64.SimpleNotesGTK</code></pre>
+
+<h2>Updating</h2>
+<ul>
+  <li><strong>APT:</strong> <code>sudo apt update && sudo apt upgrade</code></li>
+  <li><strong>Flatpak:</strong> <code>flatpak update</code></li>
+</ul>
+</body></html>
