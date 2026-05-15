@@ -21,7 +21,6 @@ or as a simple day to day notetaking app for day to day use.
 
 📦 Option 1: Flatpak.
 
-The most recommended way to install SimpleNotes-GTK on any Linux distribution (Ubuntu, Fedora, Arch, SteamOS).  
 Download the `simplenotes.flatpak` from the [latest Release](https://github.com/MemuGG64/SimpleNotes_GTK/releases).
 
 Install it by double-clicking the file or using the terminal:
@@ -31,7 +30,6 @@ flatpak install ./simplenotes.flatpak
 
 📦 Option 2: Debian Package.
 
-The easiest way to install SimpleNotes-GTK on Ubuntu, Debian, Linux Mint, or Pop!_OS is by using the .deb package.  
 Download the [latest Release](https://github.com/MemuGG64/SimpleNotes_GTK/releases).  
 Install it by oppening the .deb or using your terminal:
 ```Bash
@@ -52,19 +50,29 @@ Run the script:
 ```Bash
 python3 SimpleNotes.py
 ```
- Option 3. MacOs
-**macOS (Homebrew)**
-# Install dependencies
+#Option 3. MacOs
+**Homebrew**
+Install dependencies
+```
 brew install gtk+3 pygobject3 python3
-# Run from source
+```
+Run from source
+```
 cd SimpleNotesGTK
+```
 python3 SimpleNotes.py
-**macOS (.app bundle)**
-# One-time setup
+
+**.app bundle**
+One-time setup
+```
 pip3 install py2app
-# Build the .app
+```
+Build the .app
+```
 ./build_macos_app.sh
-# The .app will be at ./SimpleNotes-GTK.app
+```
+The .app will be at ./SimpleNotes-GTK.app
+
 **Disclaimer:**  
 AI was used to make this app
 
