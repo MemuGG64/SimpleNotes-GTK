@@ -52,7 +52,19 @@ Run the script:
 ```Bash
 python3 SimpleNotes.py
 ```
-   
+ Option 3. MacOs
+**macOS (Homebrew)**
+# Install dependencies
+brew install gtk+3 pygobject3 python3
+# Run from source
+cd SimpleNotesGTK
+python3 SimpleNotes.py
+**macOS (.app bundle)**
+# One-time setup
+pip3 install py2app
+# Build the .app
+./build_macos_app.sh
+# The .app will be at ./SimpleNotes-GTK.app
 **Disclaimer:**  
 AI was used to make this app
 

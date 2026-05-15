@@ -21,7 +21,7 @@ from ui_helpers import UIHelpers
 from note_styler import NoteStylist
 from to_do_styler import ToDoStyler
 
-VERSION = "1.2.1"
+VERSION = "1.2.2"
 GITHUB_REPO = "MemuGG64/SimpleNotes-GTK"
 
 # Process identity
@@ -35,7 +35,9 @@ else:
 class SimpleNotes_GTK(Gtk.Window):
     def __init__(self):
         super().__init__(title="SimpleNotes-GTK")
-        self.set_icon_name("accessories-text-editor")
+        icon_path = os.path.join(os.path.dirname(__file__), '..', 'resources', 'SNG.png')
+        if os.path.exists(icon_path):
+            self.set_icon_from_file(icon_path)
         self.connect("delete-event", self.on_window_delete)
 
         # Initialize Managers
