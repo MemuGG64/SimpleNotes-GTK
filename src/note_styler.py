@@ -18,8 +18,6 @@ class NoteStylist:
         self.tag_bold = self.buffer.create_tag("bold", weight=Pango.Weight.BOLD)
         self.tag_link = self.buffer.create_tag("link", foreground="#3584e4", underline=Pango.Underline.SINGLE)
         self.tag_hidden = self.buffer.create_tag("hidden", invisible=True)
-        self.tag_image = self.buffer.create_tag("image_marker")
-        # Special tag to identify pixbuf characters for easy removal
         self.tag_pixbuf = self.buffer.create_tag("pixbuf_marker")
 
     def apply_markdown(self):
@@ -29,7 +27,7 @@ class NoteStylist:
         try:
             # 0. Clear all rendering tags and pixbufs
             start, end = self.buffer.get_bounds()
-            for tag in [self.tag_bold, self.tag_link, self.tag_hidden, self.tag_image]:
+            for tag in [self.tag_bold, self.tag_link, self.tag_hidden]:
                 self.buffer.remove_tag(tag, start, end)
 
             # Remove all pixbufs added by NoteStylist
@@ -80,10 +78,13 @@ class NoteStylist:
         
         all_matches.sort(key=lambda x: x[1].start())
 
-        # Since we removed pixbufs, the current text matches buffer offsets perfectly
+        # Track cumulative pixbuf offset: each insert_pixbuf shifts subsequent positions
+        pixbuf_offset = 0
         for m_type, match in all_matches:
             ms, me = match.span()
-            s, e = self.buffer.get_iter_at_offset(ms), self.buffer.get_iter_at_offset(me)
+            adj = ms + pixbuf_offset
+            s = self.buffer.get_iter_at_offset(adj)
+            e = self.buffer.get_iter_at_offset(me + pixbuf_offset)
 
             if is_revealed(ms, me):
                 self.buffer.apply_tag(self.tag_link, s, e)
@@ -96,20 +97,18 @@ class NoteStylist:
                 if os.path.exists(path):
                     try:
                         pixbuf = GdkPixbuf.Pixbuf.new_from_file_at_scale(path, width, -1, True)
-                        # Insert pixbuf and tag it so we can find it later
-                        # insert_pixbuf inserts it BEFORE the iterator
                         self.buffer.insert_pixbuf(e, pixbuf)
-                        
-                        # Apply our removal tag to the pixbuf char
+                        pixbuf_offset += 1
                         tag_s = e.copy()
                         tag_s.backward_char()
                         self.buffer.apply_tag(self.tag_pixbuf, tag_s, e)
                     except: pass
             else:
                 g1_s, g1_e = match.start(1), match.end(1)
-                self.buffer.apply_tag(self.tag_hidden, s, self.buffer.get_iter_at_offset(g1_s))
-                self.buffer.apply_tag(self.tag_link, self.buffer.get_iter_at_offset(g1_s), self.buffer.get_iter_at_offset(g1_e))
-                self.buffer.apply_tag(self.tag_hidden, self.buffer.get_iter_at_offset(g1_e), e)
+                off = pixbuf_offset
+                self.buffer.apply_tag(self.tag_hidden, s, self.buffer.get_iter_at_offset(g1_s + off))
+                self.buffer.apply_tag(self.tag_link, self.buffer.get_iter_at_offset(g1_s + off), self.buffer.get_iter_at_offset(g1_e + off))
+                self.buffer.apply_tag(self.tag_hidden, self.buffer.get_iter_at_offset(g1_e + off), e)
 
     def handle_paste(self):
         clipboard = Gtk.Clipboard.get(Gdk.SELECTION_CLIPBOARD)
@@ -133,7 +132,7 @@ class NoteStylist:
 
     def insert_markdown(self, text):
         self.buffer.begin_user_action()
-        self.buffer.insert_at_cursor(text + " ") 
+        self.buffer.insert_at_cursor(text) 
         self.text_view.scroll_to_mark(self.buffer.get_insert(), 0, False, 0, 0)
         self.buffer.end_user_action()
 

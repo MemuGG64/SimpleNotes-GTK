@@ -274,7 +274,15 @@ class SimpleNotes_GTK(Gtk.Window):
             self.file_ops.save_todo_note(self.current_path, td)
         else:
             buf = self.text_view.get_buffer()
-            self.file_ops.save_text_note(self.current_path, buf.get_text(*buf.get_bounds(), True))
+            self.note_styler.is_rendering = True
+            try:
+                start, end = buf.get_bounds()
+                buf.remove_tag(self.note_styler.tag_hidden, start, end)
+                content = buf.get_text(*buf.get_bounds(), False).replace('\uFFFC', '')
+                self.file_ops.save_text_note(self.current_path, content)
+            finally:
+                self.note_styler.is_rendering = False
+                self.apply_markdown()
         if args and args[0] is not self: self.refresh_sidebar()
 
     def on_pin(self, btn):
@@ -569,10 +577,41 @@ class SimpleNotes_GTK(Gtk.Window):
             if k == Gdk.KEY_Tab and event.keyval == Gdk.KEY_ISO_Left_Tab and (event.state & mod_mask) == (m & mod_mask):
                 if self.exec_bind("switch_note"): return True
 
-        if widget == self.text_view and self.stack.get_visible_child_name() == "text" and event.keyval == Gdk.KEY_Return:
-            buf = widget.get_buffer(); iter = buf.get_iter_at_mark(buf.get_insert()); line_iter = iter.copy(); line_iter.set_line_offset(0)
-            match = re.match(r'^(\s*([*\-]\s*)?)', buf.get_text(line_iter, iter, False))
-            if match and match.group(1): GLib.idle_add(lambda: buf.insert_at_cursor(match.group(1)))
+        if widget == self.text_view and self.stack.get_visible_child_name() == "text":
+            if event.keyval == Gdk.KEY_Return:
+                buf = widget.get_buffer(); it = buf.get_iter_at_mark(buf.get_insert()); line_iter = it.copy(); line_iter.set_line_offset(0)
+                m = re.match(r'^(\s*([*\-]\s*)?)', buf.get_text(line_iter, it, False))
+                if m and m.group(1): GLib.idle_add(lambda: buf.insert_at_cursor(m.group(1)))
+            elif event.state & Gdk.ModifierType.CONTROL_MASK and event.keyval in (Gdk.KEY_BackSpace, Gdk.KEY_Delete):
+                buf = widget.get_buffer()
+                it = buf.get_iter_at_mark(buf.get_insert())
+                offset = it.get_offset()
+                text = buf.get_text(*buf.get_bounds(), True)
+                img_p = r'!\[([^\]|]*)(?:\|(\d+))?\]\(([^\)]+)\)'
+                lnk_p = r'\[([^\]]+)\]\(([^\)]+)\)'
+                best = None
+                by_end = event.keyval == Gdk.KEY_BackSpace
+                for pat in [img_p, lnk_p]:
+                    for m in re.finditer(pat, text):
+                        ms, me = m.span()
+                        if by_end:
+                            if ms <= offset <= me:
+                                best = (ms, me); break
+                            if me < offset + 2 and (best is None or me > best[1]):
+                                best = (ms, me)
+                        else:
+                            if ms <= offset <= me:
+                                best = (ms, me); break
+                            if ms > offset - 2 and (best is None or ms < best[0]):
+                                best = (ms, me)
+                    if best and best[0] <= offset <= best[1]: break
+                if best:
+                    self.note_styler.is_rendering = True
+                    s, e = buf.get_iter_at_offset(best[0]), buf.get_iter_at_offset(best[1])
+                    buf.delete(s, e)
+                    self.note_styler.is_rendering = False
+                    self.apply_markdown()
+                    return True
         return False
 
     def on_accel_edited(self, rnd, path, key, mods, hw):
