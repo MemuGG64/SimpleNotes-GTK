@@ -1,9 +1,5 @@
 #!/usr/bin/env python3
 import sys
-import os
-
-script_dir = os.path.dirname(os.path.realpath(__file__))
-sys.path.insert(0, os.path.join(script_dir, 'src'))
 
 if __name__ == "__main__":
     try:
@@ -25,9 +21,9 @@ if __name__ == "__main__":
             print("Install: sudo apt install python3-gi python3-gi-cairo gir1.2-gtk-3.0")
         sys.exit(1)
 
-    import main
+    from simplenotes_gtk.main import SimpleNotes_GTK
 
-    app = main.SimpleNotes_GTK()
+    app = SimpleNotes_GTK()
     app.connect("destroy", Gtk.main_quit)
     app.show_all()
     Gtk.main()

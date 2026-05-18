@@ -2,7 +2,7 @@ import gi
 import time
 gi.require_version('Gtk', '3.0')
 from gi.repository import Gtk, Gdk, GLib
-from ui_helpers import UIHelpers
+from .dialogs import UIHelpers
 
 class ToDoStyler:
     def __init__(self, todo_listbox, todo_sw, container, on_change_cb, on_save_cb):
@@ -33,20 +33,27 @@ class ToDoStyler:
         for r in list(self.completed_box.get_children()):
             self.completed_box.remove(r)
 
+    def _next_id(self):
+        mx = 0
+        for r in list(self.active_box.get_children()) + list(self.completed_box.get_children()):
+            t = getattr(r, 'tid', 0)
+            if t and t > mx:
+                mx = t
+        return mx + 1
+
     def get_all_items(self):
         items = []
-        for i, r in enumerate(self.active_box.get_children()):
+        for r in self.active_box.get_children():
             items.append({
-                "dateCreated": getattr(r, 'ts', int(time.time() * 1000)),
-                "id": i + 1,
+                "dateCreated": r.ts if r.ts is not None else int(time.time() * 1000),
+                "id": r.tid if r.tid is not None else self._next_id(),
                 "isDone": False,
                 "title": r.ent.get_text()
             })
-        offset = len(items)
-        for i, r in enumerate(self.completed_box.get_children()):
+        for r in self.completed_box.get_children():
             items.append({
-                "dateCreated": getattr(r, 'ts', int(time.time() * 1000)),
-                "id": offset + i + 1,
+                "dateCreated": r.ts if r.ts is not None else int(time.time() * 1000),
+                "id": r.tid if r.tid is not None else self._next_id(),
                 "isDone": True,
                 "title": r.ent.get_text()
             })
@@ -55,16 +62,16 @@ class ToDoStyler:
     def get_state_items(self):
         items = []
         for r in self.active_box.get_children():
-            items.append({"done": False, "txt": r.ent.get_text(), "ts": r.ts})
+            items.append({"done": False, "txt": r.ent.get_text(), "ts": r.ts, "tid": r.tid})
         for r in self.completed_box.get_children():
-            items.append({"done": True, "txt": r.ent.get_text(), "ts": r.ts})
+            items.append({"done": True, "txt": r.ent.get_text(), "ts": r.ts, "tid": r.tid})
         return items
 
     def show_all(self):
         self.active_box.show_all()
         self.completed_box.show_all()
 
-    def add_todo(self, txt="", done=False, d_c=None, index=-1):
+    def add_todo(self, txt="", done=False, d_c=None, tid=None, index=-1):
         row = Gtk.ListBoxRow()
         box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
         box.get_style_context().add_class('t-box')
@@ -111,6 +118,9 @@ class ToDoStyler:
         for w in (hb, chk, ent, del_b):
             box.pack_start(w, w == ent, w == ent, 0)
         row.add(box)
+        if tid is None:
+            tid = self._next_id()
+        row.tid = tid
         row.ts, row.chk, row.ent, row.box = d_c, chk, ent, box
 
         target = self.completed_box if done else self.active_box

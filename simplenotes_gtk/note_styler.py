@@ -11,7 +11,7 @@ class NoteStylist:
         self.file_ops = file_ops
         self.buffer = text_view.get_buffer()
         self.revealed_range = None
-        self.is_rendering = False 
+        self.is_rendering = False
         self.setup_tags()
 
     def setup_tags(self):
@@ -23,19 +23,17 @@ class NoteStylist:
     def apply_markdown(self):
         if self.is_rendering: return
         self.is_rendering = True
-        
+
         try:
-            # 0. Clear all rendering tags and pixbufs
             start, end = self.buffer.get_bounds()
             for tag in [self.tag_bold, self.tag_link, self.tag_hidden]:
                 self.buffer.remove_tag(tag, start, end)
 
-            # Remove all pixbufs added by NoteStylist
             it = self.buffer.get_start_iter()
             while True:
                 res = it.forward_to_tag_toggle(self.tag_pixbuf)
                 if not res: break
-                
+
                 if it.begins_tag(self.tag_pixbuf):
                     end_it = it.copy()
                     end_it.forward_to_tag_toggle(self.tag_pixbuf)
@@ -77,8 +75,6 @@ class NoteStylist:
             all_matches.append(('lnk', m))
         
         all_matches.sort(key=lambda x: x[1].start())
-
-        # Track cumulative pixbuf offset: each insert_pixbuf shifts subsequent positions
         pixbuf_offset = 0
         for m_type, match in all_matches:
             ms, me = match.span()
@@ -102,7 +98,8 @@ class NoteStylist:
                         tag_s = e.copy()
                         tag_s.backward_char()
                         self.buffer.apply_tag(self.tag_pixbuf, tag_s, e)
-                    except: pass
+                    except Exception:
+                        pass
             else:
                 g1_s, g1_e = match.start(1), match.end(1)
                 off = pixbuf_offset
@@ -132,7 +129,7 @@ class NoteStylist:
 
     def insert_markdown(self, text):
         self.buffer.begin_user_action()
-        self.buffer.insert_at_cursor(text) 
+        self.buffer.insert_at_cursor(text)
         self.text_view.scroll_to_mark(self.buffer.get_insert(), 0, False, 0, 0)
         self.buffer.end_user_action()
 
