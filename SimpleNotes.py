@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
+import logging
 import sys
+
+logging.basicConfig(level=logging.WARNING, format="%(levelname)s:%(name)s:%(message)s")
 
 if __name__ == "__main__":
     try:
