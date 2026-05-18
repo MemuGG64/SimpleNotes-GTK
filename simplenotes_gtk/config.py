@@ -25,6 +25,7 @@ class ConfigManager:
         "fol_order": [],
         "default_ext": ".txt",
         "symbolic_icons": True,
+        "auto_update": True,
         "width": 950,
         "height": 650,
         "binds": {
@@ -112,15 +113,8 @@ class ConfigManager:
         add_opt(b_gen, "<b>Notes Directory:</b>", "Path where notes are stored.", fc)
         sw_is = Gtk.Switch()
         add_opt(b_gen, "Symbolic Icons:", "Use monochrome icons.", sw_is, "symbolic_icons", True, True)
-        cb_ext = Gtk.ComboBoxText()
-        for k, v in [(".txt", "Text (.txt)"), (".md", "Markdown (.md)"), (".json", "Checklist (.json)")]:
-            cb_ext.append(k, v)
-        add_opt(b_gen, "<b>Default Format:</b>", "Extension for new notes.", cb_ext, "default_ext")
-        b_gen.pack_start(Gtk.Separator(), False, False, 5)
-
-        conv_btn = Gtk.Button(label="Convert Folder to Default Format", margin_top=5)
-        conv_btn.connect("clicked", lambda x: callbacks["convert_folder"]())
-        b_gen.pack_start(conv_btn, False, False, 0)
+        sw_au = Gtk.Switch()
+        add_opt(b_gen, "Check for Updates:", "Automatically check GitHub for new versions.", sw_au, "auto_update", True, True)
         nb.append_page(_page(b_gen), Gtk.Label(label="General"))
 
         b_beh = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=15, border_width=20)
@@ -137,6 +131,16 @@ class ConfigManager:
         add_opt(b_beh, "Sidebar Layout:", "View mode.", cb_v, "view")
         sw_f = Gtk.Switch()
         add_opt(b_beh, "Group by Folders:", "Show subdirectories.", sw_f, "folders", True, True)
+        b_beh.pack_start(Gtk.Separator(), False, False, 5)
+
+        cb_ext = Gtk.ComboBoxText()
+        for k, v in [(".txt", "Text (.txt)"), (".md", "Markdown (.md)"), (".json", "Checklist (.json)")]:
+            cb_ext.append(k, v)
+        add_opt(b_beh, "<b>Default Format:</b>", "Extension for new notes.", cb_ext, "default_ext")
+
+        conv_btn = Gtk.Button(label="Convert Folder to Default Format", margin_top=5)
+        conv_btn.connect("clicked", lambda x: callbacks["convert_folder"]())
+        b_beh.pack_start(conv_btn, False, False, 0)
         nb.append_page(_page(b_beh), Gtk.Label(label="Behavior"))
 
         return nb

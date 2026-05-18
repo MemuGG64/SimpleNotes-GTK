@@ -66,7 +66,8 @@ class SimpleNotes_GTK(Gtk.Window):
         self.apply_autosave()
         self.sidebar.refresh()
         self.sidebar.box.show()
-        GLib.timeout_add(3000, self.updater.check)
+        if self.config_manager.get("auto_update"):
+            GLib.timeout_add(3000, self.updater.check)
 
     def load_styles(self):
         css = Gtk.CssProvider()
