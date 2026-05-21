@@ -4,10 +4,11 @@ import os
 import json
 import sys
 import re
+import time
 import webbrowser
 
 gi.require_version('Gtk', '3.0')
-from gi.repository import Gtk, Gdk, GLib
+from gi.repository import Gtk, Gdk, GLib, Gio
 
 from .config import ConfigManager
 from .file_operations import FileOperations
@@ -44,8 +45,11 @@ class SimpleNotes_GTK(Gtk.Window):
 
         self.load_styles()
 
-        self.current_path = self.timer_id = None
+        self.current_path = None
         self.note_history = []
+        self._file_monitor = None
+        self._suppress_until = 0.0
+        self._reload_pending = False
 
         self.set_default_size(self.config_manager.get("width"), self.config_manager.get("height"))
         self.set_size_request(300, 250)
@@ -63,7 +67,6 @@ class SimpleNotes_GTK(Gtk.Window):
         )
         self.settings_notebook.append_page(self.shortcuts.build_tab(), Gtk.Label(label="Shortcuts"))
         self.shortcuts.reload()
-        self.apply_autosave()
         self.sidebar.refresh()
         self.sidebar.box.show()
         if self.config_manager.get("auto_update"):
@@ -139,7 +142,9 @@ class SimpleNotes_GTK(Gtk.Window):
             'get_stack_child': lambda: self.stack.get_visible_child_name(),
         })
         self.text_view.connect("key-press-event", self.keystroke.on_key_press)
-        self.connect("key-press-event", self.keystroke.on_key_press)
+        self._capture_ctrl = Gtk.EventControllerKey.new(self)
+        self._capture_ctrl.set_propagation_phase(Gtk.PropagationPhase.CAPTURE)
+        self._capture_ctrl.connect("key-pressed", self._on_capture_key)
 
         self.chrono = Chrono(self.file_ops, {
             'get_current_path': lambda: self.current_path,
@@ -185,14 +190,20 @@ class SimpleNotes_GTK(Gtk.Window):
         self.config_manager.set(key, val)
         if refresh:
             self.sidebar.refresh()
-        if key == "autosave":
-            self.apply_autosave()
         if key == "view":
             self.sidebar.set_view_mode(val)
+        if key == "watch":
+            if val != "off":
+                if self.current_path:
+                    self._setup_file_monitor(self.current_path)
+            else:
+                self._remove_file_monitor()
 
     def on_window_delete(self, *args):
         w, h = self.get_size(); self.config_manager.update({"width": w, "height": h})
-        self.on_save()
+        self._remove_file_monitor()
+        if self.config_manager.get("failsafe") == "full":
+            self.on_save()
         return False
 
     def on_save(self, *args):
@@ -233,7 +244,8 @@ class SimpleNotes_GTK(Gtk.Window):
             self.chrono.rename_path(p, np); self.sidebar.refresh()
 
     def open_file(self, path):
-        if self.current_path: self.on_save()
+        if self.current_path and self.config_manager.get("failsafe") in ("switch", "full"):
+            self.on_save()
         self.chrono.undoing = True
         self.current_path = path
 
@@ -256,12 +268,66 @@ class SimpleNotes_GTK(Gtk.Window):
         else:
             self.stack.set_visible_child_name("text"); self.text_view.get_buffer().set_text(self.file_ops.load_note_content(path))
         self.chrono.undoing = False; self.chrono.push_state(path, self.chrono.get_state()); self.apply_markdown()
+        self._setup_file_monitor(path)
+
+    def _on_capture_key(self, controller, keyval, keycode, state):
+        if keyval == Gdk.KEY_Escape:
+            child = self.stack.get_visible_child_name()
+            if child == "settings":
+                self._show_note_view()
+            else:
+                self.sidebar.focus()
+            return Gdk.EVENT_STOP
+        return Gdk.EVENT_PROPAGATE
 
     def _show_note_view(self):
         if self.current_path:
             self.stack.set_visible_child_name("todo" if self.file_ops.is_todo(self.current_path) else "text")
         else:
             self.stack.set_visible_child_name("empty")
+
+    def _setup_file_monitor(self, path):
+        self._remove_file_monitor()
+        if self.config_manager.get("watch", "1000") == "off":
+            return
+        if path and os.path.exists(path):
+            gfile = Gio.File.new_for_path(path)
+            self._file_monitor = gfile.monitor_file(Gio.FileMonitorFlags.NONE, None)
+            self._file_monitor.connect("changed", self._on_file_changed)
+
+    def _remove_file_monitor(self):
+        if self._file_monitor:
+            self._file_monitor.cancel()
+            self._file_monitor = None
+
+    def _on_file_changed(self, monitor, gfile, other_file, event):
+        if event in (Gio.FileMonitorEvent.CHANGES_DONE_HINT, Gio.FileMonitorEvent.CHANGED):
+            if time.monotonic() > self._suppress_until and not self._reload_pending:
+                self._reload_pending = True
+                watch = self.config_manager.get("watch", "1000")
+                debounce = int(watch) if watch != "off" else 1000
+                GLib.timeout_add(debounce, self._reload_current_note)
+
+    def _reload_current_note(self):
+        self._reload_pending = False
+        if not self.current_path or not os.path.exists(self.current_path):
+            return False
+        if self.file_ops.is_todo(self.current_path):
+            self.stack.set_visible_child_name("todo")
+            self.todo_styler.clear_all()
+            try:
+                for i in json.loads(self.file_ops.load_note_content(self.current_path)):
+                    self.todo_styler.add_todo(i.get("title", ""), i.get("isDone", False), i.get("dateCreated"), i.get("id"))
+            except Exception:
+                pass
+            self.todo_styler.update_checked_count()
+            self.todo_styler.show_all()
+        else:
+            self.stack.set_visible_child_name("text")
+            self.text_view.get_buffer().set_text(self.file_ops.load_note_content(self.current_path))
+        self.chrono.push_state(self.current_path, self.chrono.get_state())
+        self.apply_markdown()
+        return False
 
     def switch_to_last_note(self):
         if len(self.note_history) >= 2:
@@ -422,9 +488,6 @@ class SimpleNotes_GTK(Gtk.Window):
             self.text_view.get_buffer().set_text(st)
         self.on_save()
 
-    def apply_autosave(self):
-        (GLib.source_remove(self.timer_id) if self.timer_id else None)
-        v = self.config_manager.get("autosave"); (setattr(self, 'timer_id', GLib.timeout_add_seconds(int(v), lambda: self.on_save() or True)) if v.isdigit() else None)
 
 
 if __name__ == "__main__":

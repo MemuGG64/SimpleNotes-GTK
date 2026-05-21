@@ -12,10 +12,6 @@ class KeyStroke:
         self.cb = callbacks
 
     def on_key_press(self, widget, event):
-        if event.keyval == Gdk.KEY_Escape and self.cb["get_stack_child"]() == "settings":
-            self.cb["show_note_view"]()
-            return True
-
         s_note_bind = self.config.get("binds").get("switch_note", "")
         if s_note_bind:
             k, m = Gtk.accelerator_parse(s_note_bind)

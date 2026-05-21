@@ -10,7 +10,7 @@ def test_defaults():
     c = ConfigManager(path)
     os.unlink(path)
     assert c.get("view") == "list"
-    assert c.get("autosave") == "30"
+    assert c.get("failsafe") == "full"
     assert c.get("sort") == "text_first"
     assert c.get("binds")["save"] == "<Primary>s"
 
