@@ -11,7 +11,7 @@ gi.require_version('Gtk', '3.0')
 from gi.repository import Gtk, Gdk, GLib, Gio
 
 from .config import ConfigManager
-from .file_operations import FileOperations
+from .file_operations import FileOperations, serialize_checklist
 from .dialogs import UIHelpers
 from .note_styler import NoteStylist
 from .to_do_styler import ToDoStyler
@@ -50,6 +50,7 @@ class SimpleNotes_GTK(Gtk.Window):
         self._file_monitor = None
         self._suppress_until = 0.0
         self._reload_pending = False
+        self._unsaved = False
 
         self.set_default_size(self.config_manager.get("width"), self.config_manager.get("height"))
         self.set_size_request(300, 250)
@@ -115,6 +116,7 @@ class SimpleNotes_GTK(Gtk.Window):
 
         self.sidebar = Sidebar(self.file_ops, self.config_manager, self.search_entry, {
             'open_file': self.open_file,
+            'open_file_focus': self._on_enter_key,
             'show_note_view': self._show_note_view,
             'rename_file': self.rename_file_dialog,
             'move_note': self.move_note_dialog,
@@ -155,7 +157,7 @@ class SimpleNotes_GTK(Gtk.Window):
             'apply_markdown': self.note_styler.apply_markdown,
         })
 
-        self.text_view.get_buffer().connect("changed", self.chrono.queue)
+        self.text_view.get_buffer().connect("changed", self._on_content_changed)
         self.text_view.get_buffer().connect("mark-set", self.on_cursor_moved)
         sw_txt = Gtk.ScrolledWindow(); sw_txt.add(self.text_view)
         self.stack.add_named(sw_txt, "text")
@@ -165,7 +167,7 @@ class SimpleNotes_GTK(Gtk.Window):
         td_box.pack_start(self.todo_listbox, False, False, 0)
 
         self.todo_sw = Gtk.ScrolledWindow(); self.todo_sw.add(td_box)
-        self.todo_styler = ToDoStyler(self.todo_listbox, self.todo_sw, td_box, self.chrono.queue, self.on_save)
+        self.todo_styler = ToDoStyler(self.todo_listbox, self.todo_sw, td_box, self._on_content_changed, self.on_save)
 
         self.add_task_btn = Gtk.Button(label="+ Add Task")
         td_box.pack_start(self.add_task_btn, False, False, 0)
@@ -180,6 +182,10 @@ class SimpleNotes_GTK(Gtk.Window):
 
         self.main_box.pack_start(self.sidebar.box, False, False, 0)
         self.main_box.pack_start(self.stack, True, True, 0)
+
+    def _on_content_changed(self, *args):
+        self._unsaved = True
+        self.chrono.queue(*args)
 
     def toggle_sidebar(self, *args):
         w, h = self.get_size()
@@ -223,6 +229,7 @@ class SimpleNotes_GTK(Gtk.Window):
                 self.note_styler.is_rendering = False
                 self.apply_markdown()
         if args and args[0] is not self: self.sidebar.refresh()
+        self._unsaved = False
 
     def on_pin(self, btn):
         if not self.current_path: return
@@ -268,7 +275,20 @@ class SimpleNotes_GTK(Gtk.Window):
         else:
             self.stack.set_visible_child_name("text"); self.text_view.get_buffer().set_text(self.file_ops.load_note_content(path))
         self.chrono.undoing = False; self.chrono.push_state(path, self.chrono.get_state()); self.apply_markdown()
+        self._unsaved = False
         self._setup_file_monitor(path)
+
+    def _on_enter_key(self, path):
+        self.open_file(path)
+        if path == self.current_path:
+            if self.file_ops.is_todo(path):
+                children = self.todo_listbox.get_children()
+                if children:
+                    last = children[-1]
+                    if hasattr(last, 'ent'):
+                        GLib.idle_add(last.ent.grab_focus)
+            else:
+                self.text_view.grab_focus()
 
     def _on_capture_key(self, controller, keyval, keycode, state):
         if keyval == Gdk.KEY_Escape:
@@ -312,22 +332,85 @@ class SimpleNotes_GTK(Gtk.Window):
         self._reload_pending = False
         if not self.current_path or not os.path.exists(self.current_path):
             return False
+        remote = self.file_ops.load_note_content(self.current_path)
         if self.file_ops.is_todo(self.current_path):
-            self.stack.set_visible_child_name("todo")
+            local = serialize_checklist(self.todo_styler.get_all_items())
+        else:
+            buf = self.text_view.get_buffer()
+            local = buf.get_text(*buf.get_bounds(), True)
+        if remote == local:
+            return False
+        self._show_conflict_dialog(remote)
+        return False
+
+    def _apply_remote_content(self, content):
+        if self.file_ops.is_todo(self.current_path):
             self.todo_styler.clear_all()
             try:
-                for i in json.loads(self.file_ops.load_note_content(self.current_path)):
+                for i in json.loads(content):
                     self.todo_styler.add_todo(i.get("title", ""), i.get("isDone", False), i.get("dateCreated"), i.get("id"))
             except Exception:
                 pass
             self.todo_styler.update_checked_count()
             self.todo_styler.show_all()
         else:
-            self.stack.set_visible_child_name("text")
-            self.text_view.get_buffer().set_text(self.file_ops.load_note_content(self.current_path))
-        self.chrono.push_state(self.current_path, self.chrono.get_state())
-        self.apply_markdown()
-        return False
+            self.text_view.get_buffer().set_text(content)
+            self.apply_markdown()
+        self._unsaved = False
+
+    def _show_conflict_dialog(self, remote_content):
+        dlg = Gtk.Dialog(
+            title="File Changed Externally",
+            parent=self,
+            flags=Gtk.DialogFlags.MODAL,
+            buttons=(
+                "Keep Local", Gtk.ResponseType.NO,
+                "Use Remote", Gtk.ResponseType.YES,
+                "Merge", Gtk.ResponseType.APPLY,
+            ))
+        dlg.set_default_size(400, 150)
+        lbl = Gtk.Label(
+            label="This file was modified outside SimpleNotes-GTK, and the local version differs.\nWhat would you like to do?",
+            wrap=True, max_width_chars=50)
+        lbl.show()
+        dlg.vbox.pack_start(lbl, True, True, 10)
+        resp = dlg.run()
+        dlg.destroy()
+        if resp == Gtk.ResponseType.YES:
+            self._apply_remote_content(remote_content)
+        elif resp == Gtk.ResponseType.APPLY:
+            self._merge_content(remote_content)
+        self._suppress_until = time.monotonic() + 0.5
+        self.on_save()
+
+    def _merge_content(self, remote_content):
+        if self.file_ops.is_todo(self.current_path):
+            local_items = self.todo_styler.get_all_items()
+            try:
+                remote_items = json.loads(remote_content)
+            except Exception:
+                remote_items = []
+            seen_titles = {i.get("title", "") for i in local_items}
+            for item in remote_items:
+                t = item.get("title", "")
+                if t not in seen_titles:
+                    seen_titles.add(t)
+                    local_items.append(item)
+            self.todo_styler.clear_all()
+            for item in local_items:
+                self.todo_styler.add_todo(item.get("title", ""), item.get("isDone", False), item.get("dateCreated"), item.get("id"))
+            self.todo_styler.update_checked_count()
+            self.todo_styler.show_all()
+        else:
+            buf = self.text_view.get_buffer()
+            local = buf.get_text(*buf.get_bounds(), True)
+            remote_lines = remote_content.split('\n')
+            local_lines = local.split('\n')
+            merged = remote_lines[:]
+            if len(local_lines) > len(remote_lines):
+                merged.extend(local_lines[len(remote_lines):])
+            buf.set_text('\n'.join(merged))
+            self.apply_markdown()
 
     def switch_to_last_note(self):
         if len(self.note_history) >= 2:

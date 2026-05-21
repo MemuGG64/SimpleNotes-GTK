@@ -1,6 +1,6 @@
 import gi
 gi.require_version('Gtk', '3.0')
-from gi.repository import Gtk, Gdk, Pango
+from gi.repository import Gtk, Gdk, Pango, GLib
 from .dialogs import UIHelpers
 
 
@@ -113,6 +113,13 @@ class Sidebar:
     def get_focus_widget(self):
         return self.listbox if self.config.get("view") == "list" else self.tree
 
+    def _scroll_to_row(self, listbox, row):
+        adj = listbox.get_parent().get_vadjustment()
+        y = row.get_allocation().y - 10
+        if y >= 0:
+            adj.set_value(min(y, adj.get_upper() - adj.get_page_size()))
+        return False
+
     def focus(self):
         if not self.box.get_visible():
             self.box.show()
@@ -132,6 +139,8 @@ class Sidebar:
     def _on_listbox_select(self, listbox, row):
         if row and hasattr(row, 'filepath') and row.filepath != self.cb["get_current_path"]():
             self.cb["open_file"](row.filepath)
+        if row:
+            GLib.idle_add(self._scroll_to_row, listbox, row)
 
     def _on_tree_select(self, selection):
         model, it = selection.get_selected()
@@ -139,6 +148,8 @@ class Sidebar:
             fp = model[it][2]
             if fp and fp != self.cb["get_current_path"]():
                 self.cb["open_file"](fp)
+            path = model.get_path(it)
+            self.tree.scroll_to_cell(path, None, True, 0.5, 0)
 
     def _on_listbox_key(self, widget, event):
         if self._pass_wm_keys(event):
