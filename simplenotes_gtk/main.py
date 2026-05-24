@@ -147,7 +147,6 @@ class SimpleNotes_GTK(Gtk.Window):
         self._capture_ctrl = Gtk.EventControllerKey.new(self)
         self._capture_ctrl.set_propagation_phase(Gtk.PropagationPhase.CAPTURE)
         self._capture_ctrl.connect("key-pressed", self._on_capture_key)
-
         self.chrono = Chrono(self.file_ops, {
             'get_current_path': lambda: self.current_path,
             'get_state': self._get_note_state,
