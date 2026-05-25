@@ -56,6 +56,11 @@ class NoteStylist:
             self.apply_links_and_images()
         finally:
             self.is_rendering = False
+            it = self.buffer.get_iter_at_mark(self.buffer.get_insert())
+            if it.is_end():
+                self.text_view.scroll_to_mark(self.buffer.get_insert(), 0, True, 0, 1.0)
+            else:
+                self.text_view.scroll_to_mark(self.buffer.get_insert(), 0, False, 0, 0)
 
     def apply_links_and_images(self):
         # Text is now clean of old pixbufs

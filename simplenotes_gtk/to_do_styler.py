@@ -15,6 +15,7 @@ class ToDoStyler:
         self.completed_box = Gtk.ListBox(selection_mode=Gtk.SelectionMode.NONE)
         self.completed_box.show()
         self.expander = Gtk.Expander(label="")
+        self.expander.set_can_focus(False)
         self.expander.add(self.completed_box)
         container.pack_start(self.expander, False, False, 0)
         self.update_checked_count()
@@ -106,6 +107,46 @@ class ToDoStyler:
                 self.on_save()
                 self.update_checked_count()
                 return True
+            if ev.keyval == Gdk.KEY_Down:
+                if ev.state & Gdk.ModifierType.SHIFT_MASK:
+                    parent = row.get_parent()
+                    if parent:
+                        idx = row.get_index()
+                        if idx < len(parent.get_children()) - 1:
+                            parent.remove(row)
+                            parent.insert(row, idx + 1)
+                            row.ent.grab_focus()
+                            self.on_change()
+                            self.on_save()
+                            return True
+                    return False
+                parent = row.get_parent()
+                if parent:
+                    nxt = parent.get_row_at_index(row.get_index() + 1)
+                    if nxt and hasattr(nxt, 'ent'):
+                        nxt.ent.grab_focus()
+                        return True
+                return False
+            if ev.keyval == Gdk.KEY_Up:
+                if ev.state & Gdk.ModifierType.SHIFT_MASK:
+                    parent = row.get_parent()
+                    if parent:
+                        idx = row.get_index()
+                        if idx > 0:
+                            parent.remove(row)
+                            parent.insert(row, idx - 1)
+                            row.ent.grab_focus()
+                            self.on_change()
+                            self.on_save()
+                            return True
+                    return False
+                parent = row.get_parent()
+                if parent:
+                    prv = parent.get_row_at_index(row.get_index() - 1)
+                    if prv and hasattr(prv, 'ent'):
+                        prv.ent.grab_focus()
+                        return True
+                return False
             return False
 
         ent.connect("key-press-event", on_key)

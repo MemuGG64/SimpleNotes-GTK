@@ -16,7 +16,6 @@ def get_config_dir():
 class ConfigManager:
     DEFAULT_CONFIG = {
         "dir": os.path.expanduser("~/Documents/SimpleNotes-GTK"),
-        "autosave": "30",
         "search": False,
         "sort": "text_first",
         "folders": True,
@@ -26,6 +25,8 @@ class ConfigManager:
         "default_ext": ".txt",
         "symbolic_icons": True,
         "auto_update": True,
+        "watch": "1000",
+        "failsafe": "full",
         "width": 950,
         "height": 650,
         "binds": {
@@ -115,13 +116,18 @@ class ConfigManager:
         add_opt(b_gen, "Symbolic Icons:", "Use monochrome icons.", sw_is, "symbolic_icons", True, True)
         sw_au = Gtk.Switch()
         add_opt(b_gen, "Check for Updates:", "Automatically check GitHub for new versions.", sw_au, "auto_update", True, True)
+        cb_fs = Gtk.ComboBoxText()
+        for k, v in [("switch", "On Switch"), ("full", "On Switch & Close"), ("manual", "Manual Only")]:
+            cb_fs.append(k, v)
+        add_opt(b_gen, "Failsafe:", "Auto-save when switching notes / closing app.", cb_fs, "failsafe")
         nb.append_page(_page(b_gen), Gtk.Label(label="General"))
 
         b_beh = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=15, border_width=20)
-        cb_auto = Gtk.ComboBoxText()
-        for k, v in [("off", "Off"), ("30", "30s"), ("60", "60s"), ("300", "5m")]:
-            cb_auto.append(k, v)
-        add_opt(b_beh, "Autosave:", "Save changes automatically.", cb_auto, "autosave")
+        cb_w = Gtk.ComboBoxText()
+        for k, v in [("off", "Off"), ("500", "500ms"), ("1000", "1s"), ("2000", "2s")]:
+            cb_w.append(k, v)
+        add_opt(b_beh, "Watch for external changes:", "Reload note when file changes on disk (Syncthing, etc.).", cb_w, "watch")
+        b_beh.pack_start(Gtk.Separator(), False, False, 5)
 
         sw_s = Gtk.Switch()
         add_opt(b_beh, "Deep Search:", "Search inside notes.", sw_s, "search", True, True)
