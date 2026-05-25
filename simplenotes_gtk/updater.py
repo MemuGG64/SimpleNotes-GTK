@@ -10,7 +10,7 @@ from gi.repository import GLib, Gtk
 
 log = logging.getLogger(__name__)
 
-VERSION = "1.4"
+VERSION = "1.4.0"
 GITHUB_REPO = "MemuGG64/SimpleNotes-GTK"
 
 
