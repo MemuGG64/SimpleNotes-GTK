@@ -15,8 +15,8 @@ class ToDoStyler:
         self.completed_box = Gtk.ListBox(selection_mode=Gtk.SelectionMode.NONE)
         self.completed_box.show()
         self.expander = Gtk.Expander(label="")
-        self.expander.set_can_focus(False)
         self.expander.add(self.completed_box)
+        self.expander.connect("key-press-event", self._on_expander_key)
         container.pack_start(self.expander, False, False, 0)
         self.update_checked_count()
 
@@ -86,7 +86,10 @@ class ToDoStyler:
         ent.connect("changed", lambda e: self.on_change())
 
         def on_key(e, ev):
-            if ev.keyval == Gdk.KEY_Return:
+            if ev.keyval in (Gdk.KEY_Return, Gdk.KEY_KP_Enter):
+                if ev.state & Gdk.ModifierType.SHIFT_MASK:
+                    chk.set_active(not chk.get_active())
+                    return True
                 if row.get_parent() == self.completed_box:
                     idx = -1
                 else:
@@ -126,6 +129,9 @@ class ToDoStyler:
                     if nxt and hasattr(nxt, 'ent'):
                         nxt.ent.grab_focus()
                         return True
+                    if parent is self.active_box and self.expander.get_visible():
+                        self.expander.grab_focus()
+                        return True
                 return False
             if ev.keyval == Gdk.KEY_Up:
                 if ev.state & Gdk.ModifierType.SHIFT_MASK:
@@ -146,6 +152,13 @@ class ToDoStyler:
                     if prv and hasattr(prv, 'ent'):
                         prv.ent.grab_focus()
                         return True
+                    active = self.active_box.get_children()
+                    if parent is self.completed_box and active:
+                        last = active[-1]
+                        if hasattr(last, 'ent'):
+                            last.ent.grab_focus()
+                            self.expander.set_expanded(False)
+                            return True
                 return False
             return False
 
@@ -191,6 +204,15 @@ class ToDoStyler:
             or index >= len(target.get_children()) - 1):
             GLib.idle_add(self.scroll_to_bottom)
         return ent
+
+    def _on_expander_key(self, w, ev):
+        if ev.keyval in (Gdk.KEY_Down, Gdk.KEY_KP_Down):
+            children = self.completed_box.get_children()
+            if children:
+                self.expander.set_expanded(True)
+                GLib.idle_add(children[0].ent.grab_focus)
+                return True
+        return False
 
     def _on_check_toggled(self, chk, row):
         if chk.get_active():
