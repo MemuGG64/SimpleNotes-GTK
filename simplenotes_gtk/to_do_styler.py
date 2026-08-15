@@ -17,16 +17,26 @@ class ToDoStyler:
         self.expander = Gtk.Expander(label="")
         self.expander.add(self.completed_box)
         self.expander.connect("key-press-event", self._on_expander_key)
-        container.pack_start(self.expander, False, False, 0)
+
+        self.del_checked_btn = UIHelpers.create_btn(
+            "edit-delete-symbolic",
+            tip="Delete completed tasks",
+            cb=lambda x: self.delete_checked())
+        self.del_checked_btn.connect("key-press-event", self._on_del_checked_key)
+
+        self.check_hb = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+        self.check_hb.pack_start(self.expander, True, True, 0)
+        self.check_hb.pack_start(self.del_checked_btn, False, False, 0)
+        container.pack_start(self.check_hb, False, False, 0)
         self.update_checked_count()
 
     def update_checked_count(self):
         completed = len(self.completed_box.get_children())
         if completed > 0:
             self.expander.set_label(f"  {completed} checked")
-            self.expander.show()
+            self.check_hb.show_all()
         else:
-            self.expander.hide()
+            self.check_hb.hide()
 
     def clear_all(self):
         for r in list(self.active_box.get_children()):
@@ -132,6 +142,9 @@ class ToDoStyler:
                     if parent is self.active_box and self.expander.get_visible():
                         self.expander.grab_focus()
                         return True
+                    if parent is self.completed_box and self.check_hb.get_visible():
+                        self.del_checked_btn.grab_focus()
+                        return True
                 return False
             if ev.keyval == Gdk.KEY_Up:
                 if ev.state & Gdk.ModifierType.SHIFT_MASK:
@@ -214,18 +227,41 @@ class ToDoStyler:
                 return True
         return False
 
-    def _on_check_toggled(self, chk, row):
-        if chk.get_active():
-            self.active_box.remove(row)
-            self.completed_box.add(row)
-            row.get_style_context().add_class('done')
-        else:
-            self.completed_box.remove(row)
-            self.active_box.add(row)
-            row.get_style_context().remove_class('done')
+    def _on_del_checked_key(self, w, ev):
+        if ev.keyval in (Gdk.KEY_Up, Gdk.KEY_KP_Up):
+            self.expander.grab_focus()
+            return True
+        return False
+
+    def delete_checked(self):
+        for r in list(self.completed_box.get_children()):
+            self.completed_box.remove(r)
         self.on_change()
         self.on_save()
         self.update_checked_count()
+        active = self.active_box.get_children()
+        if active and hasattr(active[-1], 'ent'):
+            active[-1].ent.grab_focus()
+
+    def _on_check_toggled(self, chk, row):
+        done = chk.get_active()
+        src, dst = (self.active_box, self.completed_box) if done else (self.completed_box, self.active_box)
+        idx = row.get_index()
+        src.remove(row)
+        dst.add(row)
+        (row.get_style_context().add_class if done else row.get_style_context().remove_class)('done')
+        GLib.idle_add(self._focus_next_task, src, idx)
+        self.on_change()
+        self.on_save()
+        self.update_checked_count()
+
+    def _focus_next_task(self, box, idx):
+        nxt = box.get_row_at_index(idx)
+        if nxt and hasattr(nxt, 'ent'):
+            nxt.ent.grab_focus()
+        elif self.expander.get_visible():
+            self.expander.grab_focus()
+        return False
 
     def scroll_to_bottom(self):
         adj = self.sw.get_vadjustment()

@@ -245,6 +245,7 @@ class SimpleNotes_GTK(Gtk.Window):
         np, err = self.file_ops.change_extension(p, ext)
         if np:
             if self.current_path == p: self.current_path = np
+            self._setup_file_monitor(self.current_path)
             self.config_manager.set("pinned", [np if x==p else x for x in self.config_manager.get("pinned")])
             self.note_history = [np if x==p else x for x in self.note_history]
             self.chrono.rename_path(p, np); self.sidebar.refresh()
@@ -310,9 +311,11 @@ class SimpleNotes_GTK(Gtk.Window):
         if self.config_manager.get("watch", "1000") == "off":
             return
         if path and os.path.exists(path):
-            gfile = Gio.File.new_for_path(path)
-            self._file_monitor = gfile.monitor_file(Gio.FileMonitorFlags.NONE, None)
-            self._file_monitor.connect("changed", self._on_file_changed)
+            parent = os.path.dirname(path)
+            if os.path.isdir(parent):
+                gfile = Gio.File.new_for_path(parent)
+                self._file_monitor = gfile.monitor_directory(Gio.FileMonitorFlags.NONE, None)
+                self._file_monitor.connect("changed", self._on_file_changed)
 
     def _remove_file_monitor(self):
         if self._file_monitor:
@@ -320,6 +323,10 @@ class SimpleNotes_GTK(Gtk.Window):
             self._file_monitor = None
 
     def _on_file_changed(self, monitor, gfile, other_file, event):
+        if not self.current_path:
+            return
+        if gfile.get_path() != self.current_path:
+            return
         if event in (Gio.FileMonitorEvent.CHANGES_DONE_HINT, Gio.FileMonitorEvent.CHANGED):
             if time.monotonic() > self._suppress_until and not self._reload_pending:
                 self._reload_pending = True
@@ -421,6 +428,7 @@ class SimpleNotes_GTK(Gtk.Window):
             op, np, err = self.file_ops.rename_folder(old, n)
             if not err:
                 if self.current_path and self.current_path.startswith(op + '/'): self.current_path = self.current_path.replace(op, np, 1)
+                self._setup_file_monitor(self.current_path)
                 self.config_manager.set("pinned", [x.replace(op, np, 1) if x.startswith(op + '/') else x for x in self.config_manager.get("pinned")])
                 self.note_history = [x.replace(op, np, 1) if x.startswith(op + '/') else x for x in self.note_history]
                 fo = self.config_manager.get("fol_order"); (fo.__setitem__(fo.index(old), n) if old in fo else None); self.config_manager.set("fol_order", fo)
@@ -457,6 +465,7 @@ class SimpleNotes_GTK(Gtk.Window):
             np, err = self.file_ops.rename_note(p, n)
             if np:
                 if self.current_path == p: self.current_path = np
+                self._setup_file_monitor(self.current_path)
                 self.config_manager.set("pinned", [np if x==p else x for x in self.config_manager.get("pinned")])
                 self.note_history = [np if x==p else x for x in self.note_history]
                 self.chrono.rename_path(p, np); self.sidebar.refresh()
@@ -468,6 +477,7 @@ class SimpleNotes_GTK(Gtk.Window):
         np, err = self.file_ops.move_note(p, folder)
         if np:
             if self.current_path == p: self.current_path = np
+            self._setup_file_monitor(self.current_path)
             self.config_manager.set("pinned", [np if x==p else x for x in self.config_manager.get("pinned")])
             self.note_history = [np if x==p else x for x in self.note_history]
             self.chrono.rename_path(p, np); self.sidebar.refresh()
@@ -505,6 +515,7 @@ class SimpleNotes_GTK(Gtk.Window):
                 n_hist = [new if x == old else x for x in n_hist]
                 if self.current_path == old:
                     self.current_path = new
+            self._setup_file_monitor(self.current_path)
             self.config_manager.set("pinned", pinned)
             self.note_history = n_hist
             msg = f"Converted {len(converted)} notes to {target}"

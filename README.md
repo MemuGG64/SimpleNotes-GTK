@@ -1,6 +1,6 @@
 # SimpleNotes-GTK
 
-A minimalist & lightweight note-taking app, built to be simple yet reliable.
+Minimalist & lightweight note-taking app, built to be simple yet reliable.
 
 GTK based app meant to work along with the mobile app [Fossify Notes](https://github.com/FossifyOrg/Notes) using a syncing service like [syncthing](https://github.com/syncthing/syncthing)  
 or as a simple day to day notetaking app for day to day use.
@@ -52,28 +52,6 @@ Run the script:
 python3 SimpleNotes.py
 ```
 ---
-### 🍎️ Option 3. MacOs
-**Homebrew**
-Install dependencies
-```
-brew install gtk+3 pygobject3 python3
-```
-Run from source
-```
-cd SimpleNotesGTK
-```
-python3 SimpleNotes.py
-
-**.app bundle**
-One-time setup
-```
-pip3 install py2app
-```
-Build the .app
-```
-./build_macos_app.sh
-```
-The .app will be at ./SimpleNotes-GTK.app
 
 **Disclaimer:**  
 AI was used to make this app

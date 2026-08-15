@@ -10,11 +10,14 @@ class KeyStroke:
         self.note_styler = note_styler
         self.config = config_manager
         self.cb = callbacks
+        self._accel_cache = {}
 
     def on_key_press(self, widget, event):
         s_note_bind = self.config.get("binds").get("switch_note", "")
         if s_note_bind:
-            k, m = Gtk.accelerator_parse(s_note_bind)
+            k, m = self._accel_cache.get(s_note_bind, (None, None))
+            if k is None:
+                k, m = self._accel_cache.setdefault(s_note_bind, Gtk.accelerator_parse(s_note_bind))
             mod_mask = Gtk.accelerator_get_default_mod_mask()
             if event.keyval == k and (event.state & mod_mask) == (m & mod_mask):
                 GLib.idle_add(self.cb["switch_to_last_note"])
