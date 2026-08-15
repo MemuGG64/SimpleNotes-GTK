@@ -30,6 +30,7 @@ def serialize_checklist(tasks):
 class FileOperations:
     def __init__(self, config_manager):
         self.config = config_manager
+        self._todo_cache = {}
 
     def get_notes_dir(self):
         return self.config.get("dir")
@@ -38,8 +39,17 @@ class FileOperations:
         if filepath.endswith('.json'):
             return True
         try:
+            st = os.stat(filepath)
+            key = (st.st_mtime_ns, st.st_size)
+            cached = self._todo_cache.get(filepath)
+            if cached and cached[0] == key:
+                return cached[1]
             with open(filepath, 'r', encoding='utf-8') as f:
-                return detect_checklist(f.read())
+                result = detect_checklist(f.read())
+            if len(self._todo_cache) > 2000:
+                self._todo_cache.clear()
+            self._todo_cache[filepath] = (key, result)
+            return result
         except Exception as e:
             log.debug("is_todo error %s: %s", filepath, e)
             return False

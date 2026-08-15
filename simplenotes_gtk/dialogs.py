@@ -19,6 +19,20 @@ class UIHelpers:
         return b
 
     @staticmethod
+    def folder_combobox(config_manager):
+        cb = Gtk.ComboBoxText.new_with_entry()
+        cb.append_text("Root")
+        if config_manager.get("folders"):
+            try:
+                for f in os.scandir(config_manager.get("dir")):
+                    if f.is_dir() and not f.name.startswith('.'):
+                        cb.append_text(f.name)
+            except OSError:
+                pass
+        cb.set_active(0)
+        return cb
+
+    @staticmethod
     def show_dialog(parent, msg_type, buttons, text, secondary_text=None):
         dlg = Gtk.MessageDialog(
             transient_for=parent,
@@ -62,16 +76,7 @@ def create_note(parent, config_manager, is_todo):
     area.pack_start(ent, True, True, 5)
 
     box_opts = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=5)
-    cb_fol = Gtk.ComboBoxText.new_with_entry()
-    cb_fol.append_text("Root")
-    if config_manager.get("folders"):
-        try:
-            for f in os.scandir(config_manager.get("dir")):
-                if f.is_dir() and not f.name.startswith('.'):
-                    cb_fol.append_text(f.name)
-        except OSError:
-            pass
-    cb_fol.set_active(0)
+    cb_fol = UIHelpers.folder_combobox(config_manager)
     box_opts.pack_start(cb_fol, True, True, 0)
 
     cb_ext = Gtk.ComboBoxText()
@@ -95,16 +100,7 @@ def create_note(parent, config_manager, is_todo):
 def move_note(parent, config_manager):
     dlg = UIHelpers.show_dialog(parent, Gtk.MessageType.QUESTION, Gtk.ButtonsType.OK_CANCEL, "Move Note to Folder")
     area = dlg.get_message_area()
-    cb = Gtk.ComboBoxText.new_with_entry()
-    cb.append_text("Root")
-    if config_manager.get("folders"):
-        try:
-            for f in os.scandir(config_manager.get("dir")):
-                if f.is_dir() and not f.name.startswith('.'):
-                    cb.append_text(f.name)
-        except OSError:
-            pass
-    cb.set_active(0)
+    cb = UIHelpers.folder_combobox(config_manager)
     area.pack_start(cb, True, True, 5)
     dlg.show_all()
     if dlg.run() == Gtk.ResponseType.OK:
@@ -118,16 +114,7 @@ def move_note(parent, config_manager):
 def confirm_folder(parent, config_manager, title):
     dlg = UIHelpers.show_dialog(parent, Gtk.MessageType.QUESTION, Gtk.ButtonsType.OK_CANCEL, title)
     area = dlg.get_message_area()
-    cb = Gtk.ComboBoxText.new_with_entry()
-    cb.append_text("Root")
-    if config_manager.get("folders"):
-        try:
-            for f in os.scandir(config_manager.get("dir")):
-                if f.is_dir() and not f.name.startswith('.'):
-                    cb.append_text(f.name)
-        except OSError:
-            pass
-    cb.set_active(0)
+    cb = UIHelpers.folder_combobox(config_manager)
     area.pack_start(cb, True, True, 5)
     dlg.show_all()
     if dlg.run() == Gtk.ResponseType.OK:

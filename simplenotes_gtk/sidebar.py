@@ -88,7 +88,7 @@ class Sidebar:
                 b = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6, border_width=5)
                 b.pack_start(_ico(icn), False, False, 0)
                 b.pack_start(Gtk.Label(label=n, xalign=0, ellipsize=Pango.EllipsizeMode.END), True, True, 0)
-                if p in self.config.get("pinned"):
+                if p in pinned_p:
                     b.pack_end(_ico("bookmark-new-symbolic"), False, False, 0)
                 lr = Gtk.ListBoxRow()
                 lr.add(b)
@@ -108,8 +108,9 @@ class Sidebar:
             add_grp("Notes", [f for f in files if f["path"] not in pinned_p], "folder-symbolic")
         self.listbox.show_all()
         self.tree.expand_all()
+        self._n_user_folders = self._count_user_folders()
 
-    def _user_folder_count(self):
+    def _count_user_folders(self):
         count = 0
         store = self.tree.get_model()
         if store:
@@ -119,6 +120,9 @@ class Sidebar:
                     count += 1
                 it = store.iter_next(it)
         return count
+
+    def _user_folder_count(self):
+        return getattr(self, '_n_user_folders', self._count_user_folders())
 
     @staticmethod
     def _pass_wm_keys(event):
@@ -145,6 +149,8 @@ class Sidebar:
     def _on_listbox_key(self, widget, event):
         if self._pass_wm_keys(event):
             return True
+        if event.keyval in (Gdk.KEY_Right, Gdk.KEY_KP_Right):
+            return True
         if event.keyval in (Gdk.KEY_Return, Gdk.KEY_KP_Enter):
             return self._open_file_from_key(widget, event)
         if event.keyval == Gdk.KEY_Menu:
@@ -169,6 +175,8 @@ class Sidebar:
 
     def _on_tree_key(self, widget, event):
         if self._pass_wm_keys(event):
+            return True
+        if event.keyval in (Gdk.KEY_Right, Gdk.KEY_KP_Right):
             return True
         if event.keyval in (Gdk.KEY_Return, Gdk.KEY_KP_Enter):
             return self._open_file_from_key(widget, event)
@@ -251,50 +259,53 @@ class Sidebar:
             r_path = getattr(r, 'filepath', None)
             r_fol = getattr(r, 'fol_name', None)
 
+        m = self._build_context_menu(filepath=r_path, fol=r_fol)
+        if m.get_children():
+            m.show_all()
+            m.popup_at_pointer(event)
+
+    def _build_context_menu(self, filepath=None, fol=None):
         m = Gtk.Menu()
-        if r_path:
+        if filepath:
             mi1 = Gtk.MenuItem(label="Rename")
-            mi1.connect("activate", lambda _: self.cb["rename_file"](r_path))
+            mi1.connect("activate", lambda _: self.cb["rename_file"](filepath))
             m.append(mi1)
 
             mi_move = Gtk.MenuItem(label="Move to Folder")
-            mi_move.connect("activate", lambda _: self.cb["move_note"](r_path))
+            mi_move.connect("activate", lambda _: self.cb["move_note"](filepath))
             m.append(mi_move)
 
             m_ext = Gtk.Menu()
             mi_ext = Gtk.MenuItem(label="Save As / Format")
             for ext in [".txt", ".md", ".json"]:
-                if not r_path.endswith(ext):
+                if not filepath.endswith(ext):
                     mi = Gtk.MenuItem(label=f"Convert to {ext}")
-                    mi.connect("activate", lambda _, e=ext, p=r_path: self.cb["change_ext"](p, e))
+                    mi.connect("activate", lambda _, e=ext, p=filepath: self.cb["change_ext"](p, e))
                     m_ext.append(mi)
             if m_ext.get_children():
                 mi_ext.set_submenu(m_ext)
                 m.append(mi_ext)
 
             mi2 = Gtk.MenuItem(label="Delete")
-            mi2.connect("activate", lambda _: self.cb["delete_note"](path_override=r_path))
+            mi2.connect("activate", lambda _: self.cb["delete_note"](path_override=filepath))
             m.append(mi2)
 
-        elif r_fol and r_fol not in self._sys_folders:
+        elif fol and fol not in self._sys_folders:
             mi1 = Gtk.MenuItem(label="Rename")
-            mi1.connect("activate", lambda _: self.cb["rename_folder"](r_fol))
+            mi1.connect("activate", lambda _: self.cb["rename_folder"](fol))
             m.append(mi1)
 
             mi2 = Gtk.MenuItem(label="Delete")
-            mi2.connect("activate", lambda _: self.cb["delete_folder"](r_fol))
+            mi2.connect("activate", lambda _: self.cb["delete_folder"](fol))
             m.append(mi2)
 
             if self._user_folder_count() > 1:
                 m.append(Gtk.SeparatorMenuItem())
                 for lbl, step in [("Move Up", -1), ("Move Down", 1)]:
                     mi = Gtk.MenuItem(label=lbl)
-                    mi.connect("activate", lambda _, s=step: self.cb["reorder_fol"](r_fol, s))
+                    mi.connect("activate", lambda _, s=step: self.cb["reorder_fol"](fol, s))
                     m.append(mi)
-
-        if m.get_children():
-            m.show_all()
-            m.popup_at_pointer(event)
+        return m
 
     def _open_file_from_key(self, widget, event):
         filepath = None
@@ -316,40 +327,7 @@ class Sidebar:
         return False
 
     def _open_context_menu(self, widget, row=None, fol=None, filepath=None):
-        m = Gtk.Menu()
-        if filepath:
-            mi1 = Gtk.MenuItem(label="Rename")
-            mi1.connect("activate", lambda _: self.cb["rename_file"](filepath))
-            m.append(mi1)
-            mi_move = Gtk.MenuItem(label="Move to Folder")
-            mi_move.connect("activate", lambda _: self.cb["move_note"](filepath))
-            m.append(mi_move)
-            m_ext = Gtk.Menu()
-            mi_ext = Gtk.MenuItem(label="Save As / Format")
-            for ext in [".txt", ".md", ".json"]:
-                if not filepath.endswith(ext):
-                    mi = Gtk.MenuItem(label=f"Convert to {ext}")
-                    mi.connect("activate", lambda _, e=ext, p=filepath: self.cb["change_ext"](p, e))
-                    m_ext.append(mi)
-            if m_ext.get_children():
-                mi_ext.set_submenu(m_ext)
-                m.append(mi_ext)
-            mi2 = Gtk.MenuItem(label="Delete")
-            mi2.connect("activate", lambda _: self.cb["delete_note"](path_override=filepath))
-            m.append(mi2)
-        elif fol and fol not in self._sys_folders:
-            mi1 = Gtk.MenuItem(label="Rename")
-            mi1.connect("activate", lambda _: self.cb["rename_folder"](fol))
-            m.append(mi1)
-            mi2 = Gtk.MenuItem(label="Delete")
-            mi2.connect("activate", lambda _: self.cb["delete_folder"](fol))
-            m.append(mi2)
-            if self._user_folder_count() > 1:
-                m.append(Gtk.SeparatorMenuItem())
-                for lbl, step in [("Move Up", -1), ("Move Down", 1)]:
-                    mi = Gtk.MenuItem(label=lbl)
-                    mi.connect("activate", lambda _, s=step: self.cb["reorder_fol"](fol, s))
-                    m.append(mi)
+        m = self._build_context_menu(filepath=filepath, fol=fol)
         if m.get_children():
             m.show_all()
             m.popup_at_pointer(None)
