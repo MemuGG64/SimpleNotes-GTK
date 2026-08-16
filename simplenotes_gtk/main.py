@@ -15,7 +15,10 @@ from .file_operations import FileOperations, serialize_checklist
 from .dialogs import UIHelpers
 from .note_styler import NoteStylist
 from .to_do_styler import ToDoStyler
-from .updater import Updater
+try:
+    from .updater import Updater
+except ImportError:
+    Updater = None
 from . import dialogs
 from .shortcuts import ShortcutManager
 from .sidebar import Sidebar
@@ -41,7 +44,7 @@ class SimpleNotes_GTK(Gtk.Window):
 
         self.config_manager = ConfigManager()
         self.file_ops = FileOperations(self.config_manager)
-        self.updater = Updater(self)
+        self.updater = Updater(self) if Updater else None
 
         self.load_styles()
 
@@ -70,7 +73,7 @@ class SimpleNotes_GTK(Gtk.Window):
         self.shortcuts.reload()
         self.sidebar.refresh()
         self.sidebar.box.show()
-        if self.config_manager.get("auto_update"):
+        if self.config_manager.get("auto_update") and self.updater:
             GLib.timeout_add(3000, self.updater.check)
 
     def load_styles(self):
