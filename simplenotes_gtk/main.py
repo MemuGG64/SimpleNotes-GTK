@@ -25,6 +25,7 @@ from .shortcuts import ShortcutManager
 from .sidebar import Sidebar
 from .keystroke import KeyStroke
 from .chrono import Chrono
+from .finder import InNoteSearch
 
 
 if sys.platform == "darwin":
@@ -65,7 +66,7 @@ class SimpleNotes_GTK(Gtk.Window):
             self, self.config_manager, self.save_btn,
             {"n_txt": lambda: self.create_file_dialog(False),
              "n_todo": lambda: self.create_file_dialog(True),
-             "find": lambda: self.search_entry.grab_focus(),
+             "find": self._open_find,
              "undo": self.chrono.undo,
              "redo": self.chrono.redo,
              "switch_note": self.switch_to_last_note}
@@ -132,7 +133,8 @@ class SimpleNotes_GTK(Gtk.Window):
             'get_current_path': lambda: self.current_path,
             'is_settings_visible': lambda: self.stack.get_visible_child_name() == "settings",
         })
-        self.search_entry.connect("search-changed", lambda x: self.sidebar.refresh())
+        self.search_entry.connect("search-changed", self._on_search_changed)
+        self.search_entry.connect("key-press-event", self._on_search_key)
 
         self.stack = Gtk.Stack(transition_type=Gtk.StackTransitionType.CROSSFADE, hhomogeneous=True)
         self.stack.add_named(Gtk.Label(label="Select or create a note"), "empty")
@@ -185,12 +187,34 @@ class SimpleNotes_GTK(Gtk.Window):
         })
         self.stack.add_named(self.settings_notebook, "settings")
 
+        self.note_search = InNoteSearch({
+            'get_query': lambda: self.search_entry.get_text(),
+            'get_stack_child': lambda: self.stack.get_visible_child_name(),
+            'get_buffer': lambda: self.text_view.get_buffer(),
+            'get_hidden_tag': lambda: self.note_styler.tag_hidden,
+            'get_todo_styler': lambda: self.todo_styler,
+            'get_selection_color': self._get_selection_color,
+            'scroll_to_mark': lambda: self.text_view.scroll_to_mark(
+                self.text_view.get_buffer().get_insert(), 0, False, 0, 0.5),
+        })
+
         self.main_box.pack_start(self.sidebar.box, False, False, 0)
         self.main_box.pack_start(self.stack, True, True, 0)
 
     def _on_content_changed(self, *args):
         self._unsaved = True
         self.chrono.queue(*args)
+        self.note_search.on_content_changed()
+
+    def _on_search_changed(self, entry):
+        self.sidebar.refresh()
+        self.note_search.highlight()
+
+    def _on_search_key(self, widget, event):
+        if event.keyval in (Gdk.KEY_Return, Gdk.KEY_KP_Enter):
+            self.note_search.step(-1 if event.state & Gdk.ModifierType.SHIFT_MASK else 1)
+            return True
+        return False
 
     def toggle_sidebar(self, *args):
         w, h = self.get_size()
@@ -283,6 +307,7 @@ class SimpleNotes_GTK(Gtk.Window):
         self.chrono.undoing = False; self.chrono.push_state(path, self.chrono.get_state()); self.apply_markdown()
         self._unsaved = False
         self._setup_file_monitor(path)
+        self.note_search.on_content_changed()
 
     def _on_enter_key(self, path):
         self.open_file(path)
@@ -296,11 +321,36 @@ class SimpleNotes_GTK(Gtk.Window):
             else:
                 self.text_view.grab_focus()
 
+    def _open_find(self):
+        if not self.sidebar.box.get_visible():
+            self.sidebar.box.show_all()
+        self.search_entry.grab_focus()
+
+    def _get_selection_color(self):
+        c = self.text_view.get_style_context().get_background_color(Gtk.StateFlags.SELECTED)
+        return "#{:02x}{:02x}{:02x}".format(round(c.red * 255), round(c.green * 255), round(c.blue * 255))
+
+    def _refocus_note(self):
+        if not self.current_path:
+            return
+        if self.file_ops.is_todo(self.current_path):
+            children = self.todo_listbox.get_children()
+            if children:
+                last = children[-1]
+                if hasattr(last, 'ent'):
+                    GLib.idle_add(last.ent.grab_focus)
+        else:
+            self.text_view.grab_focus()
+
     def _on_capture_key(self, controller, keyval, keycode, state):
         if keyval == Gdk.KEY_Escape:
             child = self.stack.get_visible_child_name()
             if child == "settings":
                 self._show_note_view()
+            elif self.search_entry.has_focus() or self.search_entry.get_text():
+                self.search_entry.set_text("")
+                self._on_search_changed(self.search_entry)
+                self._refocus_note()
             else:
                 self.sidebar.focus()
             return Gdk.EVENT_STOP
@@ -369,6 +419,7 @@ class SimpleNotes_GTK(Gtk.Window):
             self.text_view.get_buffer().set_text(content)
             self.apply_markdown()
         self._unsaved = False
+        self.note_search.on_content_changed()
 
     def _show_conflict_dialog(self, remote_content):
         dlg = Gtk.Dialog(
@@ -606,6 +657,7 @@ class SimpleNotes_GTK(Gtk.Window):
             self.todo_styler.update_checked_count()
         else:
             self.text_view.get_buffer().set_text(st)
+        self.note_search.on_content_changed()
         self.on_save()
 
 

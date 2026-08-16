@@ -22,6 +22,7 @@ BUILTIN_SHORTCUTS = [
     ("Backspace", "To-do: delete the task when empty"),
     ("Up / Down", "To-do: focus previous / next task"),
     ("Shift+Up / Shift+Down", "To-do: move task up / down"),
+    ("Return / Shift+Return", "Search box: jump to next / previous match in the open note"),
     ("Return", "Sidebar: open the selected note"),
     ("Menu", "Sidebar: open the context menu"),
     ("Shift+Up / Shift+Down", "Sidebar: reorder the folder under the cursor"),
