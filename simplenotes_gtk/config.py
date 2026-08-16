@@ -87,7 +87,9 @@ class ConfigManager:
             row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
             txt_b = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
             txt_b.pack_start(Gtk.Label(label=txt, use_markup=True, xalign=0), False, False, 0)
-            txt_b.pack_start(Gtk.Label(label=f"<small>{desc}</small>", use_markup=True, xalign=0, opacity=0.7), False, False, 0)
+            d_lbl = Gtk.Label(label=f"<small>{desc}</small>", use_markup=True, xalign=0, opacity=0.7,
+                              wrap=True, max_width_chars=34)
+            txt_b.pack_start(d_lbl, False, False, 0)
             row.pack_start(txt_b, True, True, 0)
             row.pack_start(w, False, False, 0)
             box.pack_start(row, False, False, 10)
@@ -120,6 +122,17 @@ class ConfigManager:
         for k, v in [("switch", "On Switch"), ("full", "On Switch & Close"), ("manual", "Manual Only")]:
             cb_fs.append(k, v)
         add_opt(b_gen, "Failsafe:", "Auto-save when switching notes / closing app.", cb_fs, "failsafe")
+
+        media_hb = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
+        open_btn = Gtk.Button(label="Open Media Folder")
+        open_btn.set_tooltip_text("Open the .media folder where pasted images are stored.")
+        open_btn.connect("clicked", lambda x: callbacks["open_media"]())
+        del_btn = Gtk.Button(label="Delete Unused Media")
+        del_btn.set_tooltip_text("Remove images in .media that no note references.")
+        del_btn.connect("clicked", lambda x: callbacks["delete_unused_media"]())
+        media_hb.pack_start(open_btn, True, True, 0)
+        media_hb.pack_start(del_btn, True, True, 0)
+        b_gen.pack_start(media_hb, False, False, 0)
         nb.append_page(_page(b_gen), Gtk.Label(label="General"))
 
         b_beh = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=15, border_width=20)

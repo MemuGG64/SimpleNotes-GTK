@@ -6,6 +6,7 @@ import sys
 import re
 import time
 import webbrowser
+import subprocess
 
 gi.require_version('Gtk', '3.0')
 from gi.repository import Gtk, Gdk, GLib, Gio
@@ -56,7 +57,7 @@ class SimpleNotes_GTK(Gtk.Window):
         self._unsaved = False
 
         self.set_default_size(self.config_manager.get("width"), self.config_manager.get("height"))
-        self.set_size_request(300, 250)
+        self.set_size_request(280, 240)
         self.set_position(Gtk.WindowPosition.CENTER)
 
         self.setup_ui()
@@ -179,6 +180,8 @@ class SimpleNotes_GTK(Gtk.Window):
         self.settings_notebook = self.config_manager.build_ui({
             'on_config_changed': self.on_config_changed,
             'convert_folder': self._convert_folder_dialog,
+            'open_media': self._open_media_folder,
+            'delete_unused_media': self._delete_unused_media,
         })
         self.stack.add_named(self.settings_notebook, "settings")
 
@@ -500,6 +503,27 @@ class SimpleNotes_GTK(Gtk.Window):
     def on_paste(self, widget):
         if self.note_styler.handle_paste():
             widget.stop_emission_by_name("paste-clipboard")
+
+    def _open_media_folder(self, *args):
+        media_dir = os.path.join(self.config_manager.get("dir"), ".media")
+        os.makedirs(media_dir, exist_ok=True)
+        opener = "open" if sys.platform == "darwin" else "xdg-open"
+        subprocess.Popen([opener, media_dir])
+
+    def _delete_unused_media(self, *args):
+        unused = self.file_ops.unused_media()
+        if not unused:
+            dlg = UIHelpers.show_dialog(self, Gtk.MessageType.INFO, Gtk.ButtonsType.OK,
+                                        "No Unused Media",
+                                        "Every image in .media is referenced by a note.")
+            dlg.run(); dlg.destroy()
+            return
+        if not UIHelpers.confirm(self, f"{len(unused)} unused image(s) in .media. Delete them?"):
+            return
+        count = self.file_ops.delete_media(unused)
+        dlg = UIHelpers.show_dialog(self, Gtk.MessageType.INFO, Gtk.ButtonsType.OK,
+                                    "Media Cleanup", f"Deleted {count} unused image(s).")
+        dlg.run(); dlg.destroy()
 
     def _convert_folder_dialog(self):
         folder = dialogs.confirm_folder(self, self.config_manager, "Convert folder to default format")

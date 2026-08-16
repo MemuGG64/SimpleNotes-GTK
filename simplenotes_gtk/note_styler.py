@@ -98,11 +98,12 @@ class NoteStylist:
                 if os.path.exists(path):
                     try:
                         pixbuf = GdkPixbuf.Pixbuf.new_from_file_at_scale(path, width, -1, True)
+                        end_offset = me + pixbuf_offset
                         self.buffer.insert_pixbuf(e, pixbuf)
                         pixbuf_offset += 1
-                        tag_s = e.copy()
-                        tag_s.backward_char()
-                        self.buffer.apply_tag(self.tag_pixbuf, tag_s, e)
+                        self.buffer.apply_tag(self.tag_pixbuf,
+                                              self.buffer.get_iter_at_offset(end_offset),
+                                              self.buffer.get_iter_at_offset(end_offset + 1))
                     except Exception:
                         pass
             else:

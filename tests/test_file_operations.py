@@ -299,3 +299,63 @@ def test_list_files_deep_search():
         files, _ = fo.list_files("secret")
         assert len(files) == 1
         assert "bbb" in files[0]["name"]
+
+
+def _make_media(tmp, names):
+    media_dir = os.path.join(tmp, ".media")
+    os.makedirs(media_dir, exist_ok=True)
+    for n in names:
+        with open(os.path.join(media_dir, n), "w") as f:
+            f.write("data")
+    return media_dir
+
+
+def test_unused_media_no_media_dir():
+    with tempfile.TemporaryDirectory() as tmp:
+        cfg = _StubConfig({"dir": tmp})
+        fo = FileOperations(cfg)
+        assert fo.unused_media() == []
+
+
+def test_unused_media_none_referenced():
+    with tempfile.TemporaryDirectory() as tmp:
+        cfg = _StubConfig({"dir": tmp})
+        fo = FileOperations(cfg)
+        _make_media(tmp, ["img_1.png", "img_2.png"])
+        assert sorted(os.path.basename(p) for p in fo.unused_media()) == ["img_1.png", "img_2.png"]
+
+
+def test_unused_media_keeps_referenced_absolute():
+    with tempfile.TemporaryDirectory() as tmp:
+        cfg = _StubConfig({"dir": tmp})
+        fo = FileOperations(cfg)
+        media_dir = _make_media(tmp, ["img_1.png", "img_2.png"])
+        p, _ = fo.create_note("note", extension=".txt")
+        with open(p, "w") as f:
+            f.write(f"![image]({os.path.join(media_dir, 'img_1.png')})")
+        unused = fo.unused_media()
+        assert len(unused) == 1
+        assert os.path.basename(unused[0]) == "img_2.png"
+
+
+def test_unused_media_keeps_referenced_relative():
+    with tempfile.TemporaryDirectory() as tmp:
+        cfg = _StubConfig({"dir": tmp})
+        fo = FileOperations(cfg)
+        _make_media(tmp, ["img_1.png", "img_2.png"])
+        p, _ = fo.create_note("note", extension=".md")
+        with open(p, "w") as f:
+            f.write("![image](.media/img_1.png)")
+        unused = fo.unused_media()
+        assert len(unused) == 1
+        assert os.path.basename(unused[0]) == "img_2.png"
+
+
+def test_delete_media():
+    with tempfile.TemporaryDirectory() as tmp:
+        cfg = _StubConfig({"dir": tmp})
+        fo = FileOperations(cfg)
+        media_dir = _make_media(tmp, ["img_1.png", "img_2.png"])
+        files = sorted(os.path.join(media_dir, n) for n in ["img_1.png", "img_2.png"])
+        assert fo.delete_media(files) == 2
+        assert sorted(os.listdir(media_dir)) == []

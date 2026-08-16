@@ -1,6 +1,7 @@
 import os
 import json
 import logging
+import re
 import shutil
 import subprocess
 import sys
@@ -221,6 +222,47 @@ class FileOperations:
 
     def default_extension(self):
         return self.config.get("default_ext", ".txt")
+
+    def unused_media(self):
+        notes_dir = self.get_notes_dir()
+        media_dir = os.path.join(notes_dir, ".media")
+        if not os.path.isdir(media_dir):
+            return []
+        refs = set()
+        img_pat = re.compile(r'!\[[^\]]*\]\(([^\)]+)\)')
+        for root, _, files in os.walk(notes_dir):
+            for f in files:
+                if not f.endswith(('.txt', '.json', '.md')):
+                    continue
+                try:
+                    with open(os.path.join(root, f), 'r', encoding='utf-8') as fh:
+                        for m in img_pat.finditer(fh.read()):
+                            ref = m.group(1)
+                            refs.add(os.path.normpath(ref))
+                            refs.add(os.path.basename(ref))
+                            if not os.path.isabs(ref):
+                                refs.add(os.path.normpath(os.path.join(notes_dir, ref)))
+                except OSError:
+                    continue
+        unused = []
+        for name in sorted(os.listdir(media_dir)):
+            mp = os.path.join(media_dir, name)
+            if os.path.isdir(mp):
+                continue
+            if os.path.normpath(mp) in refs or name in refs:
+                continue
+            unused.append(mp)
+        return unused
+
+    def delete_media(self, files):
+        count = 0
+        for f in files:
+            try:
+                os.remove(f)
+                count += 1
+            except OSError:
+                pass
+        return count
 
     def convert_folder(self, folder, target_ext):
         notes_dir = self.get_notes_dir()
